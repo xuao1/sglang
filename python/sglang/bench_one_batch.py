@@ -321,9 +321,13 @@ def latency_test_run_once(
     # Prefill
     synchronize(device)
     tic = time.time()
+    # for ii in range(10):
+    #     next_token_ids, _, batch = extend(reqs, model_runner)
+    #     synchronize(device)
+    # prefill_latency = (time.time() - tic) / 10.0
     next_token_ids, _, batch = extend(reqs, model_runner)
     synchronize(device)
-    prefill_latency = time.time() - tic
+    prefill_latency = (time.time() - tic)
     tot_latency += prefill_latency
     throughput = input_len * batch_size / prefill_latency
     rank_print(
