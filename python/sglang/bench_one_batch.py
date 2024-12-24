@@ -297,11 +297,11 @@ def latency_test_run_once(
     run_name, model_runner, rank_print, reqs, batch_size, input_len, output_len, device
 ):
     max_batch_size = model_runner.max_total_num_tokens // (input_len + output_len)
-    if batch_size > max_batch_size:
-        rank_print(
-            f"skipping ({batch_size}, {input_len}, {output_len}) due to max batch size limit"
-        )
-        return
+    # if batch_size > max_batch_size:
+    #     rank_print(
+    #         f"skipping ({batch_size}, {input_len}, {output_len}) due to max batch size limit"
+    #     )
+    #     return
 
     # Clear the pools.
     model_runner.req_to_token_pool.clear()
@@ -339,7 +339,11 @@ def latency_test_run_once(
 
     # Decode
     decode_latencies = []
+    rank_print(
+        f"Decode. output_len"
+    )
     for i in range(output_len - 1):
+        print(i + 1, end=" ")
         synchronize(device)
         tic = time.time()
         next_token_ids, _ = decode(next_token_ids, batch, model_runner)
@@ -394,17 +398,17 @@ def latency_test(
     )
 
     # Warm up
-    rank_print("Warmup ...")
-    latency_test_run_once(
-        bench_args.run_name,
-        model_runner,
-        rank_print,
-        reqs,
-        bench_args.batch_size[0],
-        bench_args.input_len[0],
-        8,  # shorter decoding to speed up the warmup
-        server_args.device,
-    )
+    # rank_print("Warmup ...")
+    # latency_test_run_once(
+    #     bench_args.run_name,
+    #     model_runner,
+    #     rank_print,
+    #     reqs,
+    #     bench_args.batch_size[0],
+    #     bench_args.input_len[0],
+    #     8,  # shorter decoding to speed up the warmup
+    #     server_args.device,
+    # )
     rank_print("Benchmark ...")
 
     # Run the sweep
