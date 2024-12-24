@@ -283,6 +283,16 @@ def synchronize(device):
     torch.get_device_module(device).synchronize()
 
 
+def get_gpu_memory(device):
+    """
+    Returns the current GPU memory usage in MB.
+    """
+    if torch.cuda.is_available():
+        # return torch.cuda.memory_allocated(device) / 1024 / 1024  # Convert to MB
+        return torch.cuda.max_memory_allocated(device) / 1024 / 1024  # Convert to MBZ
+    return 0
+
+
 def latency_test_run_once(
     run_name, model_runner, rank_print, reqs, batch_size, input_len, output_len, device
 ):
@@ -296,6 +306,8 @@ def latency_test_run_once(
     # Clear the pools.
     model_runner.req_to_token_pool.clear()
     model_runner.token_to_kv_pool.clear()
+
+    # rank_print(f"Before running. GPU memory used: {get_gpu_memory(device):.2f} MB")
 
     measurement_results = {
         "run_name": run_name,
@@ -319,6 +331,7 @@ def latency_test_run_once(
     )
     measurement_results["prefill_latency"] = prefill_latency
     measurement_results["prefill_throughput"] = throughput
+    # rank_print(f"After Prefill. GPU memory used: {get_gpu_memory(device):.2f} MB")
 
     # Decode
     decode_latencies = []
@@ -336,6 +349,8 @@ def latency_test_run_once(
                 f"Decode.  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
             )
 
+    # rank_print(f"After Decode. GPU memory used: {get_gpu_memory(device):.2f} MB")
+
     # Record decode timing from 2nd output
     if output_len > 1:
         med_decode_latency = np.median(decode_latencies)
@@ -352,6 +367,7 @@ def latency_test_run_once(
     )
     measurement_results["total_latency"] = tot_latency
     measurement_results["overall_throughput"] = throughput
+    # rank_print(f"Total. GPU memory used: {get_gpu_memory(device):.2f} MB")
     return measurement_results
 
 
@@ -392,6 +408,7 @@ def latency_test(
     for bs, il, ol in itertools.product(
         bench_args.batch_size, bench_args.input_len, bench_args.output_len
     ):
+        rank_print(f"batch_size: {bs}, input_len: {il}, output_len: {ol}")
         reqs = prepare_synthetic_inputs_for_latency_test(bs, il)
         ret = latency_test_run_once(
             bench_args.run_name,
@@ -405,6 +422,7 @@ def latency_test(
         )
         if ret is not None:
             result_list.append(ret)
+        print("\n")
 
     # Write results in jsonlines format on rank 0.
     if tp_rank == 0 and bench_args.result_filename:
@@ -458,6 +476,7 @@ if __name__ == "__main__":
     BenchArgs.add_cli_args(parser)
     args = parser.parse_args()
     server_args = ServerArgs.from_cli_args(args)
+    print(server_args)
     bench_args = BenchArgs.from_cli_args(args)
 
     logging.basicConfig(
