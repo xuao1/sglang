@@ -65,8 +65,6 @@ from sglang.srt.server import _set_envs_and_config
 from sglang.srt.server_args import PortArgs, ServerArgs
 from sglang.srt.utils import configure_logger, kill_process_tree, suppress_other_loggers
 
-from sglang.srt.model_executor.forward_batch_info import ForwardMode
-
 
 @dataclasses.dataclass
 class BenchArgs:
@@ -295,38 +293,15 @@ def get_gpu_memory(device):
     return 0
 
 
-def print_dataclass(obj, indent=0):
-    prefix = ' ' * indent
-    if dataclasses.is_dataclass(obj):
-        print(f'{prefix}{type(obj).__name__}:')
-        for field in dataclasses.fields(obj):
-            value = getattr(obj, field.name)
-            print(f'{prefix}  {field.name}:', end=' ')
-            print_dataclass(value, indent + 4)
-    elif isinstance(obj, list):
-        print()
-        for i, item in enumerate(obj):
-            print(f'{prefix}[{i}]:', end=' ')
-            print_dataclass(item, indent + 4)
-    elif isinstance(obj, dict):
-        print()
-        for key, value in obj.items():
-            print(f'{prefix}{key}:', end=' ')
-            print_dataclass(value, indent + 4)
-    else:
-        print(obj)
-
-
-
 def latency_test_run_once(
     run_name, model_runner, rank_print, reqs, batch_size, input_len, output_len, device
 ):
     max_batch_size = model_runner.max_total_num_tokens // (input_len + output_len)
-    # if batch_size > max_batch_size:
-    #     rank_print(
-    #         f"skipping ({batch_size}, {input_len}, {output_len}) due to max batch size limit"
-    #     )
-    #     return
+    if batch_size > max_batch_size:
+        rank_print(
+            f"skipping ({batch_size}, {input_len}, {output_len}) due to max batch size limit"
+        )
+        return
 
     # Clear the pools.
     model_runner.req_to_token_pool.clear()
@@ -346,20 +321,9 @@ def latency_test_run_once(
     # Prefill
     synchronize(device)
     tic = time.time()
-
-    # for ii in range(10):
-    #     next_token_ids, _, batch = extend(reqs, model_runner)
-    #     synchronize(device)
-    # prefill_latency = (time.time() - tic) / 10.0
     next_token_ids, _, batch = extend(reqs, model_runner)
-    # print("batch:")
-    # print_dataclass(batch)
     synchronize(device)
-    prefill_latency = (time.time() - tic)
-
-    # next_token_ids = torch.full((batch_size,), 323, dtype=torch.int32, device='cuda:0')
-    # batch = ScheduleBatch(forward_mode=ForwardMode.EXTEND, reqs=batch_size)
-
+    prefill_latency = time.time() - tic
     tot_latency += prefill_latency
     throughput = input_len * batch_size / prefill_latency
     rank_print(
@@ -371,11 +335,7 @@ def latency_test_run_once(
 
     # Decode
     decode_latencies = []
-    # rank_print(
-    #     f"Decode. output_len"
-    # )
     for i in range(output_len - 1):
-        # print(i + 1, end=" ")
         synchronize(device)
         tic = time.time()
         next_token_ids, _ = decode(next_token_ids, batch, model_runner)
