@@ -383,7 +383,9 @@ def latency_test_run_once(
         latency = time.time() - tic
         tot_latency += latency
         throughput = batch_size / latency
-        decode_latencies.append(latency)
+        # skip 1st decode
+        if i >= 1:
+            decode_latencies.append(latency)
         if i < 5:
             rank_print(
                 f"Decode.  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
