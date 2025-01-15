@@ -395,10 +395,11 @@ def latency_test_run_once(
 
     # Record decode timing from 2nd output
     if output_len > 1:
+        avg_decode_latency = np.mean(decode_latencies)
         med_decode_latency = np.median(decode_latencies)
         med_decode_throughput = batch_size / med_decode_latency
         rank_print(
-            f"Decode.  median latency: {med_decode_latency:6.5f} s, median throughput: {med_decode_throughput:9.2f} token/s"
+            f"Decode.  mean latency: {avg_decode_latency:6.5f} s, median latency: {med_decode_latency:6.5f} s, median throughput: {med_decode_throughput:9.2f} token/s"
         )
         measurement_results["median_decode_latency"] = med_decode_latency
         measurement_results["median_decode_throughput"] = med_decode_throughput
