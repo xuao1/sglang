@@ -378,6 +378,10 @@ def latency_test_run_once(
         # print(i + 1, end=" ")
         synchronize(device)
         tic = time.time()
+        print("1000000000 decode")
+        for ii in range(1000000000):
+            _, _ = decode(next_token_ids, batch, model_runner)
+        print("after 1000000000 decode")
         next_token_ids, _ = decode(next_token_ids, batch, model_runner)
         synchronize(device)
         latency = time.time() - tic
