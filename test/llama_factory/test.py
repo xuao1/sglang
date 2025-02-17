@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING, List, Optional
 import os
 import yaml
-from pathlib import Path
 
 from llamafactory.hparams import get_train_args
 from llamafactory.model import load_model, load_tokenizer
@@ -9,7 +8,6 @@ from llamafactory.data import SFTDataCollatorWith4DAttentionMask, get_dataset, g
 from llamafactory.extras.constants import IGNORE_INDEX
 from llamafactory.extras.misc import calculate_tps
 from llamafactory.train.callbacks import LogCallback
-from llamafactory.train.trainer_utils import create_modelcard_and_push
 from llamafactory.train.sft.metric import ComputeAccuracy, ComputeSimilarity, eval_logit_processor
 from llamafactory.train.sft.trainer import CustomSeq2SeqTrainer
 
@@ -67,7 +65,7 @@ def run_sft(
         args=training_args,
         finetuning_args=finetuning_args,
         data_collator=data_collator,
-        callbacks=callbacks,
+        callbacks=None,
         **dataset_module,
         **tokenizer_module,
         **metric_module,
@@ -77,25 +75,22 @@ def run_sft(
     if training_args.do_train:
         train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
         trainer.save_model()
-        if finetuning_args.include_effective_tokens_per_second:
-            train_result.metrics["effective_tokens_per_sec"] = calculate_tps(
-                dataset_module["train_dataset"], train_result.metrics, stage="sft"
-            )
+        # if finetuning_args.include_effective_tokens_per_second:
+        #     train_result.metrics["effective_tokens_per_sec"] = calculate_tps(
+        #         dataset_module["train_dataset"], train_result.metrics, stage="sft"
+        #     )
 
         trainer.log_metrics("train", train_result.metrics)
         trainer.save_metrics("train", train_result.metrics)
         trainer.save_state()
-        if trainer.is_world_process_zero() and finetuning_args.plot_loss:
-            plot_loss(training_args.output_dir, keys=["loss", "eval_loss", "eval_accuracy"])
-
-    # Create model card
-    create_modelcard_and_push(trainer, model_args, data_args, training_args, finetuning_args)
+        # if trainer.is_world_process_zero() and finetuning_args.plot_loss:
+        #     plot_loss(training_args.output_dir, keys=["loss", "eval_loss", "eval_accuracy"])
 
     return
 
 def main():
     callbacks = []
-    config_path = Path(__file__).parent / "llama3_lora_sft.yaml"
+    config_path = "/workspace/sglang/test/llama_factory/llama3_lora_sft.yaml"
     
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
