@@ -378,10 +378,10 @@ def latency_test_run_once(
         # print(i + 1, end=" ")
         synchronize(device)
         tic = time.time()
-        print("1000000000 decode")
-        for ii in range(1000000000):
-            _, _ = decode(next_token_ids, batch, model_runner)
-        print("after 1000000000 decode")
+        # print("1000000000 decode")
+        # for ii in range(1000000000):
+        #     _, _ = decode(next_token_ids, batch, model_runner)
+        # print("after 1000000000 decode")
         next_token_ids, _ = decode(next_token_ids, batch, model_runner)
         synchronize(device)
         latency = time.time() - tic
@@ -399,11 +399,11 @@ def latency_test_run_once(
 
     # Record decode timing from 2nd output
     if output_len > 1:
-        avg_decode_latency = np.mean(decode_latencies)
+        avg_decode_latency = np.mean(decode_latencies)*1000
         med_decode_latency = np.median(decode_latencies)
         med_decode_throughput = batch_size / med_decode_latency
         rank_print(
-            f"Decode.  mean latency: {avg_decode_latency:6.5f} s, median latency: {med_decode_latency:6.5f} s, median throughput: {med_decode_throughput:9.2f} token/s"
+            f"Decode.  mean latency: {avg_decode_latency:6.5f} ms, median latency: {med_decode_latency:6.5f} s, median throughput: {med_decode_throughput:9.2f} token/s"
         )
         measurement_results["median_decode_latency"] = med_decode_latency
         measurement_results["median_decode_throughput"] = med_decode_throughput
