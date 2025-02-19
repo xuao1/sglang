@@ -67,6 +67,44 @@ from sglang.srt.utils import configure_logger, kill_process_tree, suppress_other
 
 from sglang.srt.model_executor.forward_batch_info import ForwardMode
 
+import threading
+
+CONTROL_FILE = "/tmp/train_control.txt"
+def file_listener(model_runner):
+    """文件监控线程函数"""
+    last_mtime = 0
+    while True:
+        try:
+            if not os.path.exists(CONTROL_FILE):
+                # 如果文件不存在则创建
+                with open(CONTROL_FILE, "w") as f:
+                    f.write("1")  # 默认运行状态
+                continue
+
+            current_mtime = os.path.getmtime(CONTROL_FILE)
+            if current_mtime > last_mtime:
+                # 检测到文件修改
+                with open(CONTROL_FILE, "r") as f:
+                    content = f.read().strip()
+                
+                # 解析控制命令
+                cmd = content.split()[-1]  # 取最后一行内容
+                new_state = cmd != "0"
+
+                # 更新模型状态（带属性校验）
+                if hasattr(model_runner, "finetune_model") and hasattr(model_runner.finetune_model, "base_model"):
+                    target = model_runner.finetune_model.base_model.model.model
+                    if hasattr(target, "pause_train"):
+                        target.pause_train = new_state
+                        logging.info(f"Training state updated: {'Paused' if new_state else 'Running'}")
+                
+                last_mtime = current_mtime
+
+        except Exception as e:
+            logging.error(f"File monitor error: {str(e)}")
+        
+        time.sleep(0.1)
+
 
 @dataclasses.dataclass
 class BenchArgs:
@@ -530,9 +568,23 @@ if __name__ == "__main__":
         level=getattr(logging, server_args.log_level.upper()),
         format="%(message)s",
     )
+    # test finetune
+    port_args = PortArgs.init_new(server_args)
+    model_runner, tokenizer = load_model(server_args, port_args, 0)
 
-    try:
-        main(server_args, bench_args)
-    finally:
-        if server_args.tp_size != 1:
-            kill_process_tree(os.getpid(), include_parent=False)
+    print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
+
+    input_thread = threading.Thread(
+        target=file_listener,
+        args=(model_runner,),
+        daemon=True
+    )
+    input_thread.start()
+
+    model_runner.finetune_train()
+
+    # try:
+    #     main(server_args, bench_args)
+    # finally:
+    #     if server_args.tp_size != 1:
+    #         kill_process_tree(os.getpid(), include_parent=False)
