@@ -547,6 +547,9 @@ class ScheduleBatch:
     # device
     device: str = "cuda"
 
+    # count time
+    count_time: bool = False
+
     @classmethod
     def init_new(
         cls,
@@ -992,6 +995,7 @@ class ScheduleBatch:
 
         # Alloc mem
         bs = len(self.reqs)
+        
         self.out_cache_loc = self.alloc_token_slots(bs)
 
         if self.model_config.is_encoder_decoder:

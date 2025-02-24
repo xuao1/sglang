@@ -266,7 +266,8 @@ def extend(reqs, model_runner):
 @torch.no_grad
 def decode(input_token_ids, batch, model_runner):
     batch.output_ids = input_token_ids
-    batch.prepare_for_decode()
+    if batch.count_time == False:
+        batch.prepare_for_decode()
     model_worker_batch = batch.get_model_worker_batch()
     forward_batch = ForwardBatch.init_new(model_worker_batch, model_runner)
     logits_output = model_runner.forward(forward_batch)
@@ -416,22 +417,38 @@ def latency_test_run_once(
         # print(i + 1, end=" ")
         synchronize(device)
         tic = time.time()
+
         # print("1000000000 decode")
-        # for ii in range(1000000000):
-        #     _, _ = decode(next_token_ids, batch, model_runner)
+        batch.count_time = True
+        for ii in range(10):
+            _, _ = decode(next_token_ids, batch, model_runner)
         # print("after 1000000000 decode")
-        next_token_ids, _ = decode(next_token_ids, batch, model_runner)
         synchronize(device)
         latency = time.time() - tic
+        latency = latency / 10
         tot_latency += latency
         throughput = batch_size / latency
+
+        batch.count_time = False
+        next_token_ids, _ = decode(next_token_ids, batch, model_runner)
+        synchronize(device)
+        # latency = time.time() - tic
+        # latency = latency / 10
+        # tot_latency += latency
+        # throughput = batch_size / latency
         # skip 1st decode
         if i >= 1:
+            # if i%128==0:
+            if i%1==0:
+                rank_print(
+                    f"Decode. i:{i},  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
+                )
             decode_latencies.append(latency)
-        if i < 5:
-            rank_print(
-                f"Decode.  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
-            )
+        # if i < 5:
+        #     rank_print(
+        #         f"Decode.  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
+        #     )
+            
 
     # rank_print(f"After Decode. GPU memory used: {get_gpu_memory(device):.2f} MB")
 
@@ -568,23 +585,24 @@ if __name__ == "__main__":
         level=getattr(logging, server_args.log_level.upper()),
         format="%(message)s",
     )
-    # test finetune
-    port_args = PortArgs.init_new(server_args)
-    model_runner, tokenizer = load_model(server_args, port_args, 0)
 
-    print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
+    # # test finetune
+    # port_args = PortArgs.init_new(server_args)
+    # model_runner, tokenizer = load_model(server_args, port_args, 0)
 
-    input_thread = threading.Thread(
-        target=file_listener,
-        args=(model_runner,),
-        daemon=True
-    )
-    input_thread.start()
+    # print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
 
-    model_runner.finetune_train()
+    # input_thread = threading.Thread(
+    #     target=file_listener,
+    #     args=(model_runner,),
+    #     daemon=True
+    # )
+    # input_thread.start()
 
-    # try:
-    #     main(server_args, bench_args)
-    # finally:
-    #     if server_args.tp_size != 1:
-    #         kill_process_tree(os.getpid(), include_parent=False)
+    # model_runner.finetune_train()
+
+    try:
+        main(server_args, bench_args)
+    finally:
+        if server_args.tp_size != 1:
+            kill_process_tree(os.getpid(), include_parent=False)
