@@ -264,15 +264,21 @@ def extend(reqs, model_runner):
 
 
 @torch.no_grad
-def decode(input_token_ids, batch, model_runner):
+def decode(input_token_ids, batch, model_runner, device):
     batch.output_ids = input_token_ids
-    if batch.count_time == False:
-        batch.prepare_for_decode()
+    # if batch.count_time == False:
+    batch.prepare_for_decode()
     model_worker_batch = batch.get_model_worker_batch()
     forward_batch = ForwardBatch.init_new(model_worker_batch, model_runner)
+
+    synchronize(device)
+    tic = time.time()
     logits_output = model_runner.forward(forward_batch)
+    synchronize(device)
+    latency = time.time() - tic
+
     next_token_ids = model_runner.sample(logits_output, forward_batch)
-    return next_token_ids, logits_output.next_token_logits
+    return next_token_ids, logits_output.next_token_logits, latency
 
 
 def correctness_test(
@@ -418,28 +424,30 @@ def latency_test_run_once(
         synchronize(device)
         tic = time.time()
 
-        # print("1000000000 decode")
-        batch.count_time = True
-        for ii in range(10):
-            _, _ = decode(next_token_ids, batch, model_runner)
-        # print("after 1000000000 decode")
-        synchronize(device)
-        latency = time.time() - tic
-        latency = latency / 10
-        tot_latency += latency
-        throughput = batch_size / latency
-
-        batch.count_time = False
-        next_token_ids, _ = decode(next_token_ids, batch, model_runner)
-        synchronize(device)
+        # # print("1000000000 decode")
+        # batch.count_time = True
+        # for ii in range(10):
+        #     _, _ = decode(next_token_ids, batch, model_runner)
+        # # print("after 1000000000 decode")
+        # synchronize(device)
         # latency = time.time() - tic
         # latency = latency / 10
         # tot_latency += latency
         # throughput = batch_size / latency
+
+        # batch.count_time = False
+        next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device)
+        synchronize(device)
+        latency = forward_latency
+        # latency = time.time() - tic
+        # latency = latency / 10
+        tot_latency += latency
+        throughput = batch_size / latency
+
         # skip 1st decode
         if i >= 1:
-            # if i%128==0:
-            if i%1==0:
+            if i%256==0:
+            # if i%1==0:
                 rank_print(
                     f"Decode. i:{i},  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
                 )
