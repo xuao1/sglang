@@ -29,6 +29,8 @@ import torch
 from sglang.srt.layers.radix_attention import RadixAttention
 from sglang.srt.utils import get_compiler_backend
 
+from freeslots.basetokenkvpool import MyBaseTokenToKVPool
+
 logger = logging.getLogger(__name__)
 
 
@@ -103,6 +105,7 @@ class BaseTokenToKVPool:
         dtype: torch.dtype,
         device: str,
     ):
+        print("BaseTokenToKVPool __init__ called")  # 调试语句
         self.size = size
         self.dtype = dtype
         if dtype == torch.float8_e5m2:
@@ -115,43 +118,51 @@ class BaseTokenToKVPool:
         self.free_slots = None
         self.is_not_in_free_group = True
         self.free_group = []
-        self.clear()
+        # self.clear()
+
+        self.mypool = MyBaseTokenToKVPool(size, dtype, device)
 
     def available_size(self):
-        return len(self.free_slots)
+        # return len(self.free_slots)
+        return self.mypool.available_size()
 
     def alloc(self, need_size: int):
-        if need_size > len(self.free_slots):
-            return None
+        # if need_size > len(self.free_slots):
+        #     return None
 
-        select_index = self.free_slots[:need_size]
-        self.free_slots = self.free_slots[need_size:]
+        # select_index = self.free_slots[:need_size]
+        # self.free_slots = self.free_slots[need_size:]
 
-        return select_index.to(self.device, non_blocking=True)
+        # return select_index.to(self.device, non_blocking=True)
+        return self.mypool.alloc(need_size)
 
     def free(self, free_index: torch.Tensor):
-        if free_index.numel() == 0:
-            return
+        # if free_index.numel() == 0:
+        #     return
 
-        if self.is_not_in_free_group:
-            self.free_slots = torch.concat((self.free_slots, free_index.cpu()))
-        else:
-            self.free_group.append(free_index)
+        # if self.is_not_in_free_group:
+        #     self.free_slots = torch.concat((self.free_slots, free_index.cpu()))
+        # else:
+        #     self.free_group.append(free_index)
+        self.mypool.free(free_index)
 
     def free_group_begin(self):
-        self.is_not_in_free_group = False
-        self.free_group = []
+        # self.is_not_in_free_group = False
+        # self.free_group = []
+        self.mypool.free_group_begin()
 
     def free_group_end(self):
-        self.is_not_in_free_group = True
-        if self.free_group:
-            self.free(torch.concat(self.free_group))
+        # self.is_not_in_free_group = True
+        # if self.free_group:
+        #     self.free(torch.concat(self.free_group))
+        self.mypool.free_group_end()
 
     def clear(self):
         # The padded slot 0 is used for writing dummy outputs from padded tokens.
-        self.free_slots = torch.arange(1, self.size + 1, dtype=torch.int32)
-        self.is_in_free_group = False
-        self.free_group = []
+        # self.free_slots = torch.arange(1, self.size + 1, dtype=torch.int32)
+        # self.is_in_free_group = False
+        # self.free_group = []
+        self.mypool.clear()
 
     def get_key_buffer(self, layer_id: int) -> torch.Tensor:
         raise NotImplementedError()
@@ -183,7 +194,9 @@ class MHATokenToKVPool(BaseTokenToKVPool):
         layer_num: int,
         device: str,
     ):
+        print("MHATokenToKVPool __init__ start")
         super().__init__(size, dtype, device)
+        print("MHATokenToKVPool __init__ end")
 
         # [size, head_num, head_dim] for each layer
         # The padded slot 0 is used for writing dummy outputs from padded tokens.
