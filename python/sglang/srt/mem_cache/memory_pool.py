@@ -197,6 +197,9 @@ class MHATokenToKVPool(BaseTokenToKVPool):
         print("MHATokenToKVPool __init__ start")
         super().__init__(size, dtype, device)
         print("MHATokenToKVPool __init__ end")
+        print("self.store_dtype is: ", self.store_dtype)
+        print("head_num is: ", head_num)
+        print("head_dim is: ", head_dim)
 
         # [size, head_num, head_dim] for each layer
         # The padded slot 0 is used for writing dummy outputs from padded tokens.

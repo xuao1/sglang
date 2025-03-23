@@ -273,9 +273,11 @@ def decode(input_token_ids, batch, model_runner, device):
 
     synchronize(device)
     tic = time.time()
-    logits_output = model_runner.forward(forward_batch)
+    for i in range(10):
+        logits_output = model_runner.forward(forward_batch)
     synchronize(device)
     latency = time.time() - tic
+    latency = latency / 10
 
     next_token_ids = model_runner.sample(logits_output, forward_batch)
     return next_token_ids, logits_output.next_token_logits, latency
@@ -446,8 +448,8 @@ def latency_test_run_once(
 
         # skip 1st decode
         if i >= 1:
-            if i%256==0:
-            # if i%1==0:
+            # if i%256==0:
+            if i%1==0:
                 rank_print(
                     f"Decode. i:{i},  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
                 )
