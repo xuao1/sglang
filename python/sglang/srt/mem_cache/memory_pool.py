@@ -29,6 +29,7 @@ import torch
 from sglang.srt.layers.radix_attention import RadixAttention
 from sglang.srt.utils import get_compiler_backend
 
+import freeslots
 from freeslots.basetokenkvpool import MyBaseTokenToKVPool
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,154 @@ class ReqToTokenPool:
             self.req_to_token[indices] = values
 
 
+# class BaseTokenToKVPool:
+#     """A memory pool that maps a token location to its kv cache data."""
+
+#     def __init__(
+#         self,
+#         size: int,
+#         dtype: torch.dtype,
+#         device: str,
+#     ):
+#         print("BaseTokenToKVPool __init__ called")  # 调试语句
+#         self.size = size
+#         self.dtype = dtype
+#         if dtype == torch.float8_e5m2:
+#             # NOTE: Store as torch.uint8 because Tensor index_put is not implemented for torch.float8_e5m2
+#             self.store_dtype = torch.uint8
+#         else:
+#             self.store_dtype = dtype
+#         self.device = device
+
+#         self.free_slots = None
+#         self.is_not_in_free_group = True
+#         self.free_group = []
+#         self.clear()
+
+#     def available_size(self):
+#         return len(self.free_slots)
+
+#     def alloc(self, need_size: int):
+#         if need_size > len(self.free_slots):
+#             return None
+
+#         select_index = self.free_slots[:need_size]
+#         self.free_slots = self.free_slots[need_size:]
+
+#         return select_index.to(self.device, non_blocking=True)
+
+#     def free(self, free_index: torch.Tensor):
+#         if free_index.numel() == 0:
+#             return
+
+#         if self.is_not_in_free_group:
+#             self.free_slots = torch.concat((self.free_slots, free_index.cpu()))
+#         else:
+#             self.free_group.append(free_index)
+
+#     def free_group_begin(self):
+#         self.is_not_in_free_group = False
+#         self.free_group = []
+
+#     def free_group_end(self):
+#         self.is_not_in_free_group = True
+#         if self.free_group:
+#             self.free(torch.concat(self.free_group))
+
+#     def clear(self):
+#         # The padded slot 0 is used for writing dummy outputs from padded tokens.
+#         self.free_slots = torch.arange(1, self.size + 1, dtype=torch.int32)
+#         self.is_in_free_group = False
+#         self.free_group = []
+
+#     def get_key_buffer(self, layer_id: int) -> torch.Tensor:
+#         raise NotImplementedError()
+
+#     def get_value_buffer(self, layer_id: int) -> torch.Tensor:
+#         raise NotImplementedError()
+
+#     def get_kv_buffer(self, layer_id: int) -> Tuple[torch.Tensor, torch.Tensor]:
+#         raise NotImplementedError()
+
+#     def set_kv_buffer(
+#         self,
+#         layer: RadixAttention,
+#         loc: torch.Tensor,
+#         cache_k: torch.Tensor,
+#         cache_v: torch.Tensor,
+#     ) -> None:
+#         raise NotImplementedError()
+
+
+# class MHATokenToKVPool(BaseTokenToKVPool):
+
+#     def __init__(
+#         self,
+#         size: int,
+#         dtype: torch.dtype,
+#         head_num: int,
+#         head_dim: int,
+#         layer_num: int,
+#         device: str,
+#     ):
+#         print("MHATokenToKVPool __init__ start")
+#         super().__init__(size, dtype, device)
+#         print("MHATokenToKVPool __init__ end")
+#         print("self.store_dtype is: ", self.store_dtype)
+#         print("head_num is: ", head_num)
+#         print("head_dim is: ", head_dim)
+
+#         # [size, head_num, head_dim] for each layer
+#         # The padded slot 0 is used for writing dummy outputs from padded tokens.
+#         self.k_buffer = [
+#             torch.empty(
+#                 (size + 1, head_num, head_dim),
+#                 dtype=self.store_dtype,
+#                 device=device,
+#             )
+#             for _ in range(layer_num)
+#         ]
+#         self.v_buffer = [
+#             torch.empty(
+#                 (size + 1, head_num, head_dim),
+#                 dtype=self.store_dtype,
+#                 device=device,
+#             )
+#             for _ in range(layer_num)
+#         ]
+
+#     def get_key_buffer(self, layer_id: int):
+#         if self.store_dtype != self.dtype:
+#             return self.k_buffer[layer_id].view(self.dtype)
+#         return self.k_buffer[layer_id]
+
+#     def get_value_buffer(self, layer_id: int):
+#         if self.store_dtype != self.dtype:
+#             return self.v_buffer[layer_id].view(self.dtype)
+#         return self.v_buffer[layer_id]
+
+#     def get_kv_buffer(self, layer_id: int):
+#         return self.get_key_buffer(layer_id), self.get_value_buffer(layer_id)
+
+#     def set_kv_buffer(
+#         self,
+#         layer: RadixAttention,
+#         loc: torch.Tensor,
+#         cache_k: torch.Tensor,
+#         cache_v: torch.Tensor,
+#     ):
+#         layer_id = layer.layer_id
+#         if cache_k.dtype != self.dtype:
+#             cache_k = cache_k.to(self.dtype)
+#             cache_v = cache_v.to(self.dtype)
+#         if self.store_dtype != self.dtype:
+#             self.k_buffer[layer_id][loc] = cache_k.view(self.store_dtype)
+#             self.v_buffer[layer_id][loc] = cache_v.view(self.store_dtype)
+#         else:
+#             self.k_buffer[layer_id][loc] = cache_k
+#             self.v_buffer[layer_id][loc] = cache_v
+
+
 class BaseTokenToKVPool:
     """A memory pool that maps a token location to its kv cache data."""
 
@@ -124,6 +273,7 @@ class BaseTokenToKVPool:
 
     def available_size(self):
         # return len(self.free_slots)
+        # print("In BaseTokenToKVPool available_size")
         return self.mypool.available_size()
 
     def alloc(self, need_size: int):
@@ -134,6 +284,7 @@ class BaseTokenToKVPool:
         # self.free_slots = self.free_slots[need_size:]
 
         # return select_index.to(self.device, non_blocking=True)
+        # print("In BaseTokenToKVPool alloc")
         return self.mypool.alloc(need_size)
 
     def free(self, free_index: torch.Tensor):
@@ -144,17 +295,20 @@ class BaseTokenToKVPool:
         #     self.free_slots = torch.concat((self.free_slots, free_index.cpu()))
         # else:
         #     self.free_group.append(free_index)
+        # print("In BaseTokenToKVPool free")
         self.mypool.free(free_index)
 
     def free_group_begin(self):
         # self.is_not_in_free_group = False
         # self.free_group = []
+        # print("In BaseTokenToKVPool free_group_begin")
         self.mypool.free_group_begin()
 
     def free_group_end(self):
         # self.is_not_in_free_group = True
         # if self.free_group:
         #     self.free(torch.concat(self.free_group))
+        # print("In BaseTokenToKVPool free_group_end")
         self.mypool.free_group_end()
 
     def clear(self):
@@ -162,15 +316,19 @@ class BaseTokenToKVPool:
         # self.free_slots = torch.arange(1, self.size + 1, dtype=torch.int32)
         # self.is_in_free_group = False
         # self.free_group = []
+        # print("In BaseTokenToKVPool clear")
         self.mypool.clear()
 
     def get_key_buffer(self, layer_id: int) -> torch.Tensor:
+        print("In BaseTokenToKVPool get_key_buffer")
         raise NotImplementedError()
 
     def get_value_buffer(self, layer_id: int) -> torch.Tensor:
+        # print("In BaseTokenToKVPool get_value_buffer")
         raise NotImplementedError()
 
     def get_kv_buffer(self, layer_id: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        # print("In BaseTokenToKVPool get_kv_buffer")
         raise NotImplementedError()
 
     def set_kv_buffer(
@@ -203,22 +361,26 @@ class MHATokenToKVPool(BaseTokenToKVPool):
 
         # [size, head_num, head_dim] for each layer
         # The padded slot 0 is used for writing dummy outputs from padded tokens.
-        self.k_buffer = [
-            torch.empty(
-                (size + 1, head_num, head_dim),
-                dtype=self.store_dtype,
-                device=device,
-            )
-            for _ in range(layer_num)
-        ]
-        self.v_buffer = [
-            torch.empty(
-                (size + 1, head_num, head_dim),
-                dtype=self.store_dtype,
-                device=device,
-            )
-            for _ in range(layer_num)
-        ]
+        tensor = freeslots.wrapped_allocate_high_priority(2, layer_num, size, head_num, head_dim, dtype)
+        self.k_buffer = tensor[0]
+        self.v_buffer = tensor[1]
+        print("After create kv buffer")
+        # self.k_buffer = [
+        #     torch.empty(
+        #         (size + 1, head_num, head_dim),
+        #         dtype=self.store_dtype,
+        #         device=device,
+        #     )
+        #     for _ in range(layer_num)
+        # ]
+        # self.v_buffer = [
+        #     torch.empty(
+        #         (size + 1, head_num, head_dim),
+        #         dtype=self.store_dtype,
+        #         device=device,
+        #     )
+        #     for _ in range(layer_num)
+        # ]
 
     def get_key_buffer(self, layer_id: int):
         if self.store_dtype != self.dtype:
