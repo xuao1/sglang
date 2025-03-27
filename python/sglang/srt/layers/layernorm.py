@@ -52,7 +52,8 @@ class RMSNorm(CustomOp):
         x: torch.Tensor,
         residual: Optional[torch.Tensor] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-
+        # print(f"input address: {x.data_ptr()}, alignment: {x.data_ptr() % 128}")
+        # print(f"residual{residual}")
         if residual is not None:
             fused_add_rmsnorm(x, residual, self.weight.data, self.variance_epsilon)
             return x, residual
