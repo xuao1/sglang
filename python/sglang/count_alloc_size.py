@@ -8,7 +8,8 @@ def count_sizes(filename):
         with open(filename, 'r') as file:
             for line in file:
                 # 使用正则表达式匹配目标模式
-                match = re.search(r'In allocate, size\s*=\s*(\d+)', line, re.IGNORECASE)
+                # match = re.search(r'In allocate, size\s*=\s*(\d+)', line, re.IGNORECASE)
+                match = re.search(r'In my_malloc, size\s*=\s*(\d+)', line, re.IGNORECASE)
                 if match:
                     size = int(match.group(1))
                     size_counts[size] = size_counts.get(size, 0) + 1

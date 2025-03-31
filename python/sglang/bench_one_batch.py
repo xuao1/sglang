@@ -69,6 +69,9 @@ from sglang.srt.model_executor.forward_batch_info import ForwardMode
 
 import threading
 
+import freeslots
+stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.1, 0.9, 0)
+
 CONTROL_FILE = "/tmp/train_control.txt"
 def file_listener(model_runner):
     """文件监控线程函数"""
@@ -273,11 +276,12 @@ def decode(input_token_ids, batch, model_runner, device):
 
     synchronize(device)
     tic = time.time()
-    for i in range(10):
+    forward_num = 1
+    for i in range(forward_num):
         logits_output = model_runner.forward(forward_batch)
     synchronize(device)
     latency = time.time() - tic
-    latency = latency / 10
+    latency = latency / forward_num
 
     next_token_ids = model_runner.sample(logits_output, forward_batch)
     return next_token_ids, logits_output.next_token_logits, latency
@@ -379,6 +383,25 @@ def latency_test_run_once(
     model_runner.req_to_token_pool.clear()
     model_runner.token_to_kv_pool.clear()
 
+    # # =============================================================================================================
+    # # =============================================================================================================
+    # # test finetune
+    model_runner.load_finetune_model()
+    # print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
+
+    input_thread = threading.Thread(
+        target=file_listener,
+        args=(model_runner,),
+        daemon=True
+    )
+    input_thread.start()
+
+    with torch.cuda.stream(stream_b):
+        model_runner.finetune_train()
+    # # =============================================================================================================
+    # # =============================================================================================================
+
+
     # rank_print(f"Before running. GPU memory used: {get_gpu_memory(device):.2f} MB")
 
     measurement_results = {
@@ -416,49 +439,69 @@ def latency_test_run_once(
     measurement_results["prefill_throughput"] = throughput
     # rank_print(f"After Prefill. GPU memory used: {get_gpu_memory(device):.2f} MB")
 
+    # # # =============================================================================================================
+    # # # =============================================================================================================
+    # # # test finetune
+    # model_runner.load_finetune_model()
+    # print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
+
+    # input_thread = threading.Thread(
+    #     target=file_listener,
+    #     args=(model_runner,),
+    #     daemon=True
+    # )
+    # input_thread.start()
+
+    # with torch.cuda.stream(stream_b):
+    #     model_runner.finetune_train()
+    # # # =============================================================================================================
+    # # # =============================================================================================================
+
+    # time.sleep(10000)
     # Decode
     decode_latencies = []
     # rank_print(
     #     f"Decode. output_len"
     # )
-    for i in range(output_len - 1):
-        # print(i + 1, end=" ")
-        synchronize(device)
-        tic = time.time()
+    with torch.cuda.stream(stream_a):
+        for i in range(output_len - 1):
+            # print(i + 1, end=" ")
+            synchronize(device)
+            tic = time.time()
 
-        # # print("1000000000 decode")
-        # batch.count_time = True
-        # for ii in range(10):
-        #     _, _ = decode(next_token_ids, batch, model_runner)
-        # # print("after 1000000000 decode")
-        # synchronize(device)
-        # latency = time.time() - tic
-        # latency = latency / 10
-        # tot_latency += latency
-        # throughput = batch_size / latency
+            # # print("1000000000 decode")
+            # batch.count_time = True
+            # for ii in range(10):
+            #     _, _ = decode(next_token_ids, batch, model_runner)
+            # # print("after 1000000000 decode")
+            # synchronize(device)
+            # latency = time.time() - tic
+            # latency = latency / 10
+            # tot_latency += latency
+            # throughput = batch_size / latency
 
-        # batch.count_time = False
-        next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device)
-        synchronize(device)
-        latency = forward_latency
-        # latency = time.time() - tic
-        # latency = latency / 10
-        tot_latency += latency
-        throughput = batch_size / latency
+            # batch.count_time = False
+            next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device)
+            synchronize(device)
+            latency = forward_latency
+            # latency = time.time() - tic
+            # latency = latency / 10
+            tot_latency += latency
+            throughput = batch_size / latency
 
-        # skip 1st decode
-        if i >= 1:
-            # if i%256==0:
-            if i%1==0:
-                rank_print(
-                    f"Decode. i:{i},  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
-                )
-            decode_latencies.append(latency)
-        # if i < 5:
-        #     rank_print(
-        #         f"Decode.  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
-        #     )
-            
+            # skip 1st decode
+            if i >= 1:
+                if i%256==0:
+                # if i%1==0:
+                    rank_print(
+                        f"Decode. i:{i},  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
+                    )
+                decode_latencies.append(latency)
+            # if i < 5:
+            #     rank_print(
+            #         f"Decode.  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
+            #     )
+        
 
     # rank_print(f"After Decode. GPU memory used: {get_gpu_memory(device):.2f} MB")
 
@@ -502,17 +545,17 @@ def latency_test(
     )
 
     # Warm up
-    rank_print("Warmup ...")
-    latency_test_run_once(
-        bench_args.run_name,
-        model_runner,
-        rank_print,
-        reqs,
-        bench_args.batch_size[0],
-        bench_args.input_len[0],
-        8,  # shorter decoding to speed up the warmup
-        server_args.device,
-    )
+    # rank_print("Warmup ...")
+    # latency_test_run_once(
+    #     bench_args.run_name,
+    #     model_runner,
+    #     rank_print,
+    #     reqs,
+    #     bench_args.batch_size[0],
+    #     bench_args.input_len[0],
+    #     8,  # shorter decoding to speed up the warmup
+    #     server_args.device,
+    # )
     rank_print("Benchmark ...")
 
     # Run the sweep

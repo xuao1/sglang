@@ -268,64 +268,6 @@ class ModelRunner:
             device_config=DeviceConfig(self.device),
         )
 
-        # # load finetune model
-        # config_path = "/workspace/sglang/test/llama_factory/llama3_lora_sft.yaml"
-        # with open(config_path, "r", encoding="utf-8") as f:
-        #     finetune_config = yaml.safe_load(f)
-        # model_args, data_args, self.training_args, finetuning_args, generating_args = llamafactory.hparams.get_train_args(args=finetune_config)
-
-        # tokenizer_module = llamafactory.model.load_tokenizer(model_args)
-        # tokenizer = tokenizer_module["tokenizer"]
-        # template = get_template_and_fix_tokenizer(tokenizer, data_args)
-        # dataset_module = get_dataset(template, model_args, data_args, self.training_args, stage="sft", **tokenizer_module)
-
-        # self.finetune_model = llamafactory.model.load_model(
-        #     tokenizer, 
-        #     model_args, 
-        #     finetuning_args, 
-        #     self.training_args.do_train
-        # )
-
-        # if getattr(self.finetune_model, "is_quantized", False) and not self.training_args.do_train:
-        #     setattr(self.finetune_model, "_hf_peft_config_loaded", True)  # hack here: make model compatible with prediction
-
-        # data_collator = SFTDataCollatorWith4DAttentionMask(
-        #     template=template,
-        #     model=self.finetune_model if not self.training_args.predict_with_generate else None,
-        #     pad_to_multiple_of=8 if self.training_args.do_train else None,  # for shift short attention
-        #     label_pad_token_id=llamafactory.extras.constants.IGNORE_INDEX if data_args.ignore_pad_token_for_loss else tokenizer.pad_token_id,
-        #     block_diag_attn=model_args.block_diag_attn,
-        #     attn_implementation=getattr(self.finetune_model.config, "_attn_implementation", None),
-        #     compute_dtype=model_args.compute_dtype,
-        #     **tokenizer_module,
-        # )
-
-        # # Override the decoding parameters of Seq2SeqTrainer
-        # self.training_args.generation_max_length = self.training_args.generation_max_length or data_args.cutoff_len
-        # self.training_args.generation_num_beams = data_args.eval_num_beams or self.training_args.generation_num_beams
-        # self.training_args.remove_unused_columns = False  # important for multimodal dataset
-
-        # # Metric utils
-        # metric_module = {}
-        # if self.training_args.predict_with_generate:
-        #     metric_module["compute_metrics"] = ComputeSimilarity(tokenizer=tokenizer)
-        # elif finetuning_args.compute_accuracy:
-        #     metric_module["compute_metrics"] = ComputeAccuracy()
-        #     metric_module["preprocess_logits_for_metrics"] = eval_logit_processor
-
-        # # Initialize our Trainer
-        # self.trainer = CustomSeq2SeqTrainer(
-        #     model=self.finetune_model,
-        #     args=self.training_args,
-        #     finetuning_args=finetuning_args,
-        #     data_collator=data_collator,
-        #     callbacks=None,
-        #     **dataset_module,
-        #     **tokenizer_module,
-        #     **metric_module,
-        # )
-        # # finish load finetune model
-
         # Parse other args
         self.sliding_window_size = (
             self.model.get_attention_sliding_window_size()
@@ -340,6 +282,68 @@ class ModelRunner:
             f"dtype={self.dtype}, "
             f"avail mem={get_available_gpu_memory(self.device, self.gpu_id):.2f} GB"
         )
+
+    def load_finetune_model(self):
+        # load finetune model
+        logger.info(
+            f"Load finetune model begin. avail mem={get_available_gpu_memory(self.device, self.gpu_id):.2f} GB"
+        )
+        config_path = "/workspace/sglang/test/llama_factory/llama3_lora_sft.yaml"
+        with open(config_path, "r", encoding="utf-8") as f:
+            finetune_config = yaml.safe_load(f)
+        model_args, data_args, self.training_args, finetuning_args, generating_args = llamafactory.hparams.get_train_args(args=finetune_config)
+
+        tokenizer_module = llamafactory.model.load_tokenizer(model_args)
+        tokenizer = tokenizer_module["tokenizer"]
+        template = get_template_and_fix_tokenizer(tokenizer, data_args)
+        dataset_module = get_dataset(template, model_args, data_args, self.training_args, stage="sft", **tokenizer_module)
+
+        self.finetune_model = llamafactory.model.load_model(
+            tokenizer, 
+            model_args, 
+            finetuning_args, 
+            self.training_args.do_train
+        )
+
+        if getattr(self.finetune_model, "is_quantized", False) and not self.training_args.do_train:
+            setattr(self.finetune_model, "_hf_peft_config_loaded", True)  # hack here: make model compatible with prediction
+
+        data_collator = SFTDataCollatorWith4DAttentionMask(
+            template=template,
+            model=self.finetune_model if not self.training_args.predict_with_generate else None,
+            pad_to_multiple_of=8 if self.training_args.do_train else None,  # for shift short attention
+            label_pad_token_id=llamafactory.extras.constants.IGNORE_INDEX if data_args.ignore_pad_token_for_loss else tokenizer.pad_token_id,
+            block_diag_attn=model_args.block_diag_attn,
+            attn_implementation=getattr(self.finetune_model.config, "_attn_implementation", None),
+            compute_dtype=model_args.compute_dtype,
+            **tokenizer_module,
+        )
+
+        # Override the decoding parameters of Seq2SeqTrainer
+        self.training_args.generation_max_length = self.training_args.generation_max_length or data_args.cutoff_len
+        self.training_args.generation_num_beams = data_args.eval_num_beams or self.training_args.generation_num_beams
+        self.training_args.remove_unused_columns = False  # important for multimodal dataset
+
+        # Metric utils
+        metric_module = {}
+        if self.training_args.predict_with_generate:
+            metric_module["compute_metrics"] = ComputeSimilarity(tokenizer=tokenizer)
+        elif finetuning_args.compute_accuracy:
+            metric_module["compute_metrics"] = ComputeAccuracy()
+            metric_module["preprocess_logits_for_metrics"] = eval_logit_processor
+
+        # Initialize our Trainer
+        self.trainer = CustomSeq2SeqTrainer(
+            model=self.finetune_model,
+            args=self.training_args,
+            finetuning_args=finetuning_args,
+            data_collator=data_collator,
+            callbacks=None,
+            **dataset_module,
+            **tokenizer_module,
+            **metric_module,
+        )
+        # finish load finetune model
 
     def finetune_train(self):
         train_result = self.trainer.train(resume_from_checkpoint=self.training_args.resume_from_checkpoint)
