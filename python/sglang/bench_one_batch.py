@@ -396,6 +396,8 @@ def latency_test_run_once(
     )
     input_thread.start()
 
+    model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
+
     with torch.cuda.stream(stream_b):
         model_runner.finetune_train()
     # # =============================================================================================================

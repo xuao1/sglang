@@ -82,8 +82,8 @@ import torch
 import freeslots
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-alloc_path = os.path.join(script_dir, '/workspace/mypytorch/freeslots/python/freeslots/_C.cpython-310-x86_64-linux-gnu.so')
-# alloc_path = os.path.join(script_dir, '/workspace/mypytorch/my_allocators/tutorial/alloc.so')
+alloc_path = os.path.join(script_dir, '/workspace/freeslots/python/freeslots/_C.cpython-310-x86_64-linux-gnu.so')
+# alloc_path = os.path.join(script_dir, '/workspace/my_allocators/tutorial/alloc.so')
 
 new_alloc = torch.cuda.memory.CUDAPluggableAllocator(
     alloc_path, 'my_malloc', 'my_free')
