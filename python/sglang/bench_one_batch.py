@@ -383,25 +383,27 @@ def latency_test_run_once(
     model_runner.req_to_token_pool.clear()
     model_runner.token_to_kv_pool.clear()
 
-    # # =============================================================================================================
-    # # =============================================================================================================
-    # # test finetune
-    model_runner.load_finetune_model()
-    # print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
+    # # # =============================================================================================================
+    # # # =============================================================================================================
+    # # # test finetune
+    # model_runner.load_finetune_model()
+    # # print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
 
-    input_thread = threading.Thread(
-        target=file_listener,
-        args=(model_runner,),
-        daemon=True
-    )
-    input_thread.start()
+    # input_thread = threading.Thread(
+    #     target=file_listener,
+    #     args=(model_runner,),
+    #     daemon=True
+    # )
+    # input_thread.start()
 
-    model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
+    # model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
 
-    with torch.cuda.stream(stream_b):
-        model_runner.finetune_train()
-    # # =============================================================================================================
-    # # =============================================================================================================
+    # with torch.cuda.stream(stream_b):
+    #     model_runner.finetune_train()
+
+    # time.sleep(10000)
+    # # # =============================================================================================================
+    # # # =============================================================================================================
 
 
     # rank_print(f"Before running. GPU memory used: {get_gpu_memory(device):.2f} MB")
@@ -439,13 +441,13 @@ def latency_test_run_once(
     )
     measurement_results["prefill_latency"] = prefill_latency
     measurement_results["prefill_throughput"] = throughput
-    # rank_print(f"After Prefill. GPU memory used: {get_gpu_memory(device):.2f} MB")
+    rank_print(f"After Prefill. GPU memory used: {get_gpu_memory(device):.2f} MB")
 
     # # # =============================================================================================================
     # # # =============================================================================================================
     # # # test finetune
     # model_runner.load_finetune_model()
-    # print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
+    # # print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
 
     # input_thread = threading.Thread(
     #     target=file_listener,
@@ -454,12 +456,15 @@ def latency_test_run_once(
     # )
     # input_thread.start()
 
+    # model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
+
     # with torch.cuda.stream(stream_b):
     #     model_runner.finetune_train()
-    # # # =============================================================================================================
-    # # # =============================================================================================================
 
     # time.sleep(10000)
+    # # # =============================================================================================================
+    # # # =============================================================================================================
+    
     # Decode
     decode_latencies = []
     # rank_print(
