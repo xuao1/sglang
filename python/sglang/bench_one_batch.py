@@ -70,7 +70,6 @@ from sglang.srt.model_executor.forward_batch_info import ForwardMode
 import threading
 
 import freeslots
-stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.1, 0.9, 0)
 
 CONTROL_FILE = "/tmp/train_control.txt"
 def file_listener(model_runner):
@@ -368,6 +367,7 @@ def print_dataclass(obj, indent=0):
         print(obj)
 
 
+stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.5, 0.5, 0)
 
 def latency_test_run_once(
     run_name, model_runner, rank_print, reqs, batch_size, input_len, output_len, device
@@ -441,30 +441,24 @@ def latency_test_run_once(
     )
     measurement_results["prefill_latency"] = prefill_latency
     measurement_results["prefill_throughput"] = throughput
-    rank_print(f"After Prefill. GPU memory used: {get_gpu_memory(device):.2f} MB")
+    # rank_print(f"After Prefill. GPU memory used: {get_gpu_memory(device):.2f} MB")
 
-    # # # =============================================================================================================
-    # # # =============================================================================================================
-    # # # test finetune
-    # model_runner.load_finetune_model()
-    # # print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
+    # # =============================================================================================================
+    # # =============================================================================================================
+    # # test finetune
+    model_runner.load_finetune_model()
 
-    # input_thread = threading.Thread(
-    #     target=file_listener,
-    #     args=(model_runner,),
-    #     daemon=True
-    # )
-    # input_thread.start()
+    model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
 
-    # model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
+    with torch.cuda.stream(stream_b):
+        model_runner.finetune_train()
 
-    # with torch.cuda.stream(stream_b):
-    #     model_runner.finetune_train()
+    print("After start finetune_train")
 
     # time.sleep(10000)
-    # # # =============================================================================================================
-    # # # =============================================================================================================
-    
+    # # =============================================================================================================
+    # # =============================================================================================================
+
     # Decode
     decode_latencies = []
     # rank_print(
@@ -498,8 +492,8 @@ def latency_test_run_once(
 
             # skip 1st decode
             if i >= 1:
-                if i%256==0:
-                # if i%1==0:
+                # if i % 256 == 0:
+                if i % 1 == 0:
                     rank_print(
                         f"Decode. i:{i},  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
                     )
