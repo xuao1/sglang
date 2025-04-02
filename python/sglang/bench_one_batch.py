@@ -68,6 +68,7 @@ from sglang.srt.utils import configure_logger, kill_process_tree, suppress_other
 from sglang.srt.model_executor.forward_batch_info import ForwardMode
 
 import threading
+from torch.profiler import profile, ProfilerActivity
 
 import freeslots
 
@@ -367,7 +368,7 @@ def print_dataclass(obj, indent=0):
         print(obj)
 
 
-stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.5, 0.5, 0)
+stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.1, 0.9, 0)
 
 def latency_test_run_once(
     run_name, model_runner, rank_print, reqs, batch_size, input_len, output_len, device
@@ -389,12 +390,12 @@ def latency_test_run_once(
     # model_runner.load_finetune_model()
     # # print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
 
-    # input_thread = threading.Thread(
-    #     target=file_listener,
-    #     args=(model_runner,),
-    #     daemon=True
-    # )
-    # input_thread.start()
+    # # input_thread = threading.Thread(
+    # #     target=file_listener,
+    # #     args=(model_runner,),
+    # #     daemon=True
+    # # )
+    # # input_thread.start()
 
     # model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
 
@@ -450,8 +451,16 @@ def latency_test_run_once(
 
     model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
 
-    with torch.cuda.stream(stream_b):
-        model_runner.finetune_train()
+    def run_finetune():
+        torch.cuda.set_device(0)
+        with torch.cuda.stream(stream_b):
+            model_runner.finetune_train()
+
+    finetune_thread = threading.Thread(target=run_finetune, daemon=True)
+    finetune_thread.start()
+
+    # with torch.cuda.stream(stream_b):
+    #     model_runner.finetune_train()
 
     print("After start finetune_train")
 
@@ -464,6 +473,44 @@ def latency_test_run_once(
     # rank_print(
     #     f"Decode. output_len"
     # )
+
+    # with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA], with_stack=True) as prof:
+    #     output_len = 100
+    #     for i in range(output_len - 1):
+    #                 # print(i + 1, end=" ")
+    #         synchronize(device)
+    #         tic = time.time()
+
+    #         # # print("1000000000 decode")
+    #         # batch.count_time = True
+    #         # for ii in range(10):
+    #         #     _, _ = decode(next_token_ids, batch, model_runner)
+    #         # # print("after 1000000000 decode")
+    #         # synchronize(device)
+    #         # latency = time.time() - tic
+    #         # latency = latency / 10
+    #         # tot_latency += latency
+    #         # throughput = batch_size / latency
+
+    #         # batch.count_time = False
+    #         next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device)
+    #         synchronize(device)
+    #         latency = forward_latency
+    #         # latency = time.time() - tic
+    #         # latency = latency / 10
+    #         tot_latency += latency
+    #         throughput = batch_size / latency
+
+    #         # skip 1st decode
+    #         # if i >= 1:
+    #         #     # if i % 256 == 0:
+    #         #     if i % 1 == 0:
+    #         #         rank_print(
+    #         #             f"Decode. i:{i},  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
+    #         #         )
+    #         #     decode_latencies.append(latency)
+    # prof.export_chrome_trace(f"/workspace/sglang/test/llama_factory/colocation_overlap_trace.json")
+
     with torch.cuda.stream(stream_a):
         for i in range(output_len - 1):
             # print(i + 1, end=" ")
