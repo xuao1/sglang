@@ -362,8 +362,18 @@ class MHATokenToKVPool(BaseTokenToKVPool):
         # [size, head_num, head_dim] for each layer
         # The padded slot 0 is used for writing dummy outputs from padded tokens.
         tensor = freeslots.wrapped_allocate_high_priority(2, layer_num, size, head_num, head_dim, dtype)
+        print(tensor.shape)
         self.k_buffer = tensor[0]
         self.v_buffer = tensor[1]
+        print(self.k_buffer.shape)
+        print(self.k_buffer[0][0].data_ptr())
+        print(self.k_buffer[1][0].data_ptr())
+        print(self.k_buffer[2][0].data_ptr())
+        print(self.k_buffer[3][0].data_ptr())
+        print(self.v_buffer[0][0].data_ptr())
+        print(self.v_buffer[1][0].data_ptr())
+        print(self.v_buffer[2][0].data_ptr())
+        print(self.v_buffer[3][0].data_ptr())
         print("After create kv buffer")
         # self.k_buffer = [
         #     torch.empty(
