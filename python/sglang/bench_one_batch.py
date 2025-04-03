@@ -267,22 +267,56 @@ def extend(reqs, model_runner):
 
 
 @torch.no_grad
-def decode(input_token_ids, batch, model_runner, device):
+def decode(input_token_ids, batch, model_runner, device, stream = None):
     batch.output_ids = input_token_ids
     # if batch.count_time == False:
     batch.prepare_for_decode()
     model_worker_batch = batch.get_model_worker_batch()
     forward_batch = ForwardBatch.init_new(model_worker_batch, model_runner)
 
-    synchronize(device)
-    tic = time.time()
-    forward_num = 1
-    for i in range(forward_num):
-        logits_output = model_runner.forward(forward_batch)
-    synchronize(device)
-    latency = time.time() - tic
-    latency = latency / forward_num
+    # synchronize(device)
+    # if(stream):
+    #     stream.wait_stream(stream)
+    #     tic = time.time()
+    #     forward_num = 1
+    #     for i in range(forward_num):
+    #         logits_output = model_runner.forward(forward_batch)
+    #     if torch.cuda.is_available():
+    #         completion_event = torch.cuda.Event()
+    #         completion_event.record(stream=stream)
+    #     if completion_event is not None:
+    #         stream.wait_event(completion_event)
+    #     latency = time.time() - tic
+    #     latency = latency / forward_num
+    completion_event_start = None
+    completion_event_end = None
+    completion_event_start = torch.cuda.Event(enable_timing=True)
+    completion_event_end = torch.cuda.Event(enable_timing=True)
 
+    if stream is not None:
+        # stream.wait_stream(torch.cuda.current_stream())
+        completion_event_start.record(stream=stream)
+        with torch.cuda.stream(stream):
+            forward_num = 1
+            for i in range(forward_num):
+                logits_output = model_runner.forward(forward_batch)
+            completion_event_end.record(stream=stream)
+        
+        # completion_event.synchronize()
+        completion_event_end.synchronize()
+        latency = completion_event_start.elapsed_time(completion_event_end)
+
+        latency = latency / forward_num
+    else:
+        print("decode, in else")
+        tic = time.time()
+        forward_num = 1
+        for i in range(forward_num):
+            logits_output = model_runner.forward(forward_batch)
+        latency = time.time() - tic
+        latency = latency / forward_num
+    
+    # synchronize(device)
     next_token_ids = model_runner.sample(logits_output, forward_batch)
     return next_token_ids, logits_output.next_token_logits, latency
 
@@ -368,7 +402,7 @@ def print_dataclass(obj, indent=0):
         print(obj)
 
 
-stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.1, 0.9, 0)
+stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.5, 0.5, 0)
 
 def latency_test_run_once(
     run_name, model_runner, rank_print, reqs, batch_size, input_len, output_len, device
@@ -444,6 +478,39 @@ def latency_test_run_once(
     measurement_results["prefill_throughput"] = throughput
     # rank_print(f"After Prefill. GPU memory used: {get_gpu_memory(device):.2f} MB")
 
+    with torch.cuda.stream(stream_a):
+        output_len = 100
+        for i in range(output_len - 1):
+            # print(i + 1, end=" ")
+            # stream_a.wait_stream(stream_a)
+            tic = time.time()
+
+            # # print("1000000000 decode")
+            # batch.count_time = True
+            # for ii in range(10):
+            #     _, _ = decode(next_token_ids, batch, model_runner)
+            # # print("after 1000000000 decode")
+            # synchronize(device)
+            # latency = time.time() - tic
+            # latency = latency / 10
+            # tot_latency += latency
+            # throughput = batch_size / latency
+
+            # batch.count_time = False
+            next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device, stream_a)
+
+            latency = forward_latency
+            # latency = time.time() - tic
+            # latency = latency / 10
+            tot_latency += latency
+            throughput = batch_size / latency
+
+            if i % 1 == 0:
+                rank_print(
+                    f"Decode. i:{i},  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
+                )
+
+
     # # =============================================================================================================
     # # =============================================================================================================
     # # test finetune
@@ -474,47 +541,46 @@ def latency_test_run_once(
     #     f"Decode. output_len"
     # )
 
-    # with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA], with_stack=True) as prof:
-    #     output_len = 100
-    #     for i in range(output_len - 1):
-    #                 # print(i + 1, end=" ")
-    #         synchronize(device)
-    #         tic = time.time()
+    # with torch.cuda.stream(stream_a):
+    #     with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA], with_stack=True) as prof:
+    #         output_len = 100
+    #         for i in range(output_len - 1):
+    #             tic = time.time()
 
-    #         # # print("1000000000 decode")
-    #         # batch.count_time = True
-    #         # for ii in range(10):
-    #         #     _, _ = decode(next_token_ids, batch, model_runner)
-    #         # # print("after 1000000000 decode")
-    #         # synchronize(device)
-    #         # latency = time.time() - tic
-    #         # latency = latency / 10
-    #         # tot_latency += latency
-    #         # throughput = batch_size / latency
+    #             # # print("1000000000 decode")
+    #             # batch.count_time = True
+    #             # for ii in range(10):
+    #             #     _, _ = decode(next_token_ids, batch, model_runner)
+    #             # # print("after 1000000000 decode")
+    #             # synchronize(device)
+    #             # latency = time.time() - tic
+    #             # latency = latency / 10
+    #             # tot_latency += latency
+    #             # throughput = batch_size / latency
 
-    #         # batch.count_time = False
-    #         next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device)
-    #         synchronize(device)
-    #         latency = forward_latency
-    #         # latency = time.time() - tic
-    #         # latency = latency / 10
-    #         tot_latency += latency
-    #         throughput = batch_size / latency
+    #             # batch.count_time = False
+    #             next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device, stream_a)
 
-    #         # skip 1st decode
-    #         # if i >= 1:
-    #         #     # if i % 256 == 0:
-    #         #     if i % 1 == 0:
-    #         #         rank_print(
-    #         #             f"Decode. i:{i},  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
-    #         #         )
-    #         #     decode_latencies.append(latency)
-    # prof.export_chrome_trace(f"/workspace/sglang/test/llama_factory/colocation_overlap_trace.json")
+    #             latency = forward_latency
+    #             # latency = time.time() - tic
+    #             # latency = latency / 10
+    #             tot_latency += latency
+    #             throughput = batch_size / latency
+
+    #             # skip 1st decode
+    #             # if i >= 1:
+    #             #     # if i % 256 == 0:
+    #             #     if i % 1 == 0:
+    #             #         rank_print(
+    #             #             f"Decode. i:{i},  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
+    #             #         )
+    #             #     decode_latencies.append(latency)
+    #     prof.export_chrome_trace(f"/workspace/sglang/test/llama_factory/colocation_overlap_trace.json")
 
     with torch.cuda.stream(stream_a):
         for i in range(output_len - 1):
             # print(i + 1, end=" ")
-            synchronize(device)
+            # stream_a.wait_stream(stream_a)
             tic = time.time()
 
             # # print("1000000000 decode")
@@ -529,8 +595,8 @@ def latency_test_run_once(
             # throughput = batch_size / latency
 
             # batch.count_time = False
-            next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device)
-            synchronize(device)
+            next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device, stream_a)
+
             latency = forward_latency
             # latency = time.time() - tic
             # latency = latency / 10
