@@ -402,7 +402,7 @@ def print_dataclass(obj, indent=0):
         print(obj)
 
 
-stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.5, 0.5, 0)
+stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.9, 0.1, 0)
 
 def latency_test_run_once(
     run_name, model_runner, rank_print, reqs, batch_size, input_len, output_len, device
@@ -531,7 +531,7 @@ def latency_test_run_once(
 
     print("After start finetune_train")
 
-    # time.sleep(10000)
+    time.sleep(10000)
     # # =============================================================================================================
     # # =============================================================================================================
 

@@ -205,6 +205,7 @@ class ServerArgs:
         if self.attention_backend is None:
             self.attention_backend = (
                 "flashinfer" if is_flashinfer_available() else "triton"
+                # "triton"
             )
         if self.sampling_backend is None:
             self.sampling_backend = (
