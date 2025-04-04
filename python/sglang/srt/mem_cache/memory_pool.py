@@ -365,15 +365,15 @@ class MHATokenToKVPool(BaseTokenToKVPool):
         print(tensor.shape)
         self.k_buffer = tensor[0]
         self.v_buffer = tensor[1]
-        print(self.k_buffer.shape)
-        print(self.k_buffer[0][0].data_ptr())
-        print(self.k_buffer[1][0].data_ptr())
-        print(self.k_buffer[2][0].data_ptr())
-        print(self.k_buffer[3][0].data_ptr())
-        print(self.v_buffer[0][0].data_ptr())
-        print(self.v_buffer[1][0].data_ptr())
-        print(self.v_buffer[2][0].data_ptr())
-        print(self.v_buffer[3][0].data_ptr())
+        # print(self.k_buffer.shape)
+        # print(self.k_buffer[0][0].data_ptr())
+        # print(self.k_buffer[1][0].data_ptr())
+        # print(self.k_buffer[2][0].data_ptr())
+        # print(self.k_buffer[3][0].data_ptr())
+        # print(self.v_buffer[0][0].data_ptr())
+        # print(self.v_buffer[1][0].data_ptr())
+        # print(self.v_buffer[2][0].data_ptr())
+        # print(self.v_buffer[3][0].data_ptr())
         print("After create kv buffer")
         # self.k_buffer = [
         #     torch.empty(
