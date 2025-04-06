@@ -406,7 +406,7 @@ def print_dataclass(obj, indent=0):
         print(obj)
 
 
-stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.5, 0.5, 0)
+stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.9, 0.1, 0)
 
 def latency_test_run_once(
     run_name, model_runner, rank_print, reqs, batch_size, input_len, output_len, device
@@ -423,6 +423,7 @@ def latency_test_run_once(
     model_runner.token_to_kv_pool.clear()
 
     native_stream = torch.cuda.Stream(device=device)
+    # stream_b = native_stream
 
     # # # =============================================================================================================
     # # # =============================================================================================================
@@ -442,7 +443,7 @@ def latency_test_run_once(
     # with torch.cuda.stream(stream_b):
     #     model_runner.finetune_train()
 
-    # # time.sleep(10000)
+    # time.sleep(10000)
     # # # =============================================================================================================
     # # # =============================================================================================================
 
@@ -517,29 +518,30 @@ def latency_test_run_once(
     #             )
 
 
-    # # # =============================================================================================================
-    # # # =============================================================================================================
-    # # # test finetune
-    # model_runner.load_finetune_model()
+    # # =============================================================================================================
+    # # =============================================================================================================
+    # # test finetune
+    model_runner.load_finetune_model()
 
-    # model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
+    model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
 
-    # def run_finetune():
-    #     torch.cuda.set_device(0)
-    #     with torch.cuda.stream(stream_b):
-    #         model_runner.finetune_train()
+    def run_finetune():
+        torch.cuda.set_device(0)
+        with torch.cuda.stream(stream_b):
+            model_runner.finetune_train()
 
-    # finetune_thread = threading.Thread(target=run_finetune, daemon=True)
-    # finetune_thread.start()
+    finetune_thread = threading.Thread(target=run_finetune, daemon=True)
+    finetune_thread.start()
 
-    # # with torch.cuda.stream(stream_b):
-    # #     model_runner.finetune_train()
+    # with torch.cuda.stream(stream_b):
+    #     model_runner.finetune_train()
+    
+    time.sleep(40)
+    print("After start finetune_train")
 
-    # print("After start finetune_train")
-
-    # # time.sleep(10000)
-    # # # =============================================================================================================
-    # # # =============================================================================================================
+    # time.sleep(10000)
+    # # =============================================================================================================
+    # # =============================================================================================================
 
     # Decode
     decode_latencies = []
@@ -583,7 +585,7 @@ def latency_test_run_once(
     #             #     decode_latencies.append(latency)
     #     prof.export_chrome_trace(f"/workspace/sglang/test/llama_factory/colocation_overlap_trace.json")
 
-    stream_a = native_stream
+    # stream_a = native_stream
 
     with torch.cuda.stream(stream_a):
         for i in range(output_len - 1):
@@ -594,7 +596,7 @@ def latency_test_run_once(
             throughput = batch_size / latency
 
             decode_latencies.append(latency)
-            if i % 8 == 0:
+            if i % 1 == 0:
                 avg_latency = sum(decode_latencies[-8:]) / 8
                 rank_print(
                         f"Decode. i:{i},  latency: {latency:6.5f} ms"
