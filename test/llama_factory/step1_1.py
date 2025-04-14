@@ -36,4 +36,4 @@ if __name__ == "__main__":
     #     if f.endswith('.csv'):
     #         os.remove(f)
     
-    process_log_file('step1_llama.log')
+    process_log_file('test1_1.log')

@@ -12,11 +12,11 @@ for bs in "${bs_values[@]}"; do
     
     # 执行命令并添加错误处理
     if ! python -m sglang.bench_one_batch \
-        --model-path /workspace/model/Meta-Llama-3-8B-Instruct/ \
+        --model-path /model/Qwen2.5-7B-Instruct/ \
         --batch $bs \
         --input-len 128 \
         --output-len 4096 \
-        --mem-fraction-static 0.8 \
+        --mem-fraction-static 0.95 \
         --disable-cuda-graph >> test.log 2>&1
     then
         # 记录错误信息到日志文件

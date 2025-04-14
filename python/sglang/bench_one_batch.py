@@ -406,7 +406,7 @@ def print_dataclass(obj, indent=0):
         print(obj)
 
 
-stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.9, 0.1, 0)
+stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.5, 0.5, 0)
 
 def latency_test_run_once(
     run_name, model_runner, rank_print, reqs, batch_size, input_len, output_len, device
@@ -423,7 +423,6 @@ def latency_test_run_once(
     model_runner.token_to_kv_pool.clear()
 
     native_stream = torch.cuda.Stream(device=device)
-    # stream_b = native_stream
 
     # # # =============================================================================================================
     # # # =============================================================================================================
@@ -437,6 +436,8 @@ def latency_test_run_once(
     # #     daemon=True
     # # )
     # # input_thread.start()
+
+    # stream_b = native_stream
 
     # model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
 
@@ -549,41 +550,41 @@ def latency_test_run_once(
     #     f"Decode. output_len"
     # )
 
-    # with torch.cuda.stream(stream_a):
-    #     with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA], with_stack=True) as prof:
-    #         output_len = 100
-    #         for i in range(output_len - 1):
-    #             tic = time.time()
+    with torch.cuda.stream(stream_a):
+        with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA], with_stack=True) as prof:
+            output_len = 100
+            for i in range(output_len - 1):
+                tic = time.time()
 
-    #             # # print("1000000000 decode")
-    #             # batch.count_time = True
-    #             # for ii in range(10):
-    #             #     _, _ = decode(next_token_ids, batch, model_runner)
-    #             # # print("after 1000000000 decode")
-    #             # synchronize(device)
-    #             # latency = time.time() - tic
-    #             # latency = latency / 10
-    #             # tot_latency += latency
-    #             # throughput = batch_size / latency
+                # # print("1000000000 decode")
+                # batch.count_time = True
+                # for ii in range(10):
+                #     _, _ = decode(next_token_ids, batch, model_runner)
+                # # print("after 1000000000 decode")
+                # synchronize(device)
+                # latency = time.time() - tic
+                # latency = latency / 10
+                # tot_latency += latency
+                # throughput = batch_size / latency
 
-    #             # batch.count_time = False
-    #             next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device, stream_a)
+                # batch.count_time = False
+                next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device, stream_a)
 
-    #             latency = forward_latency
-    #             # latency = time.time() - tic
-    #             # latency = latency / 10
-    #             tot_latency += latency
-    #             throughput = batch_size / latency
+                latency = forward_latency
+                # latency = time.time() - tic
+                # latency = latency / 10
+                tot_latency += latency
+                throughput = batch_size / latency
 
-    #             # skip 1st decode
-    #             # if i >= 1:
-    #             #     # if i % 256 == 0:
-    #             #     if i % 1 == 0:
-    #             #         rank_print(
-    #             #             f"Decode. i:{i},  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
-    #             #         )
-    #             #     decode_latencies.append(latency)
-    #     prof.export_chrome_trace(f"/workspace/sglang/test/llama_factory/colocation_overlap_trace.json")
+                # skip 1st decode
+                # if i >= 1:
+                #     # if i % 256 == 0:
+                #     if i % 1 == 0:
+                #         rank_print(
+                #             f"Decode. i:{i},  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
+                #         )
+                #     decode_latencies.append(latency)
+        prof.export_chrome_trace(f"/workspace/sglang/test/llama_factory/colocation_overlap_trace.json")
 
     # stream_a = native_stream
 
@@ -596,10 +597,10 @@ def latency_test_run_once(
             throughput = batch_size / latency
 
             decode_latencies.append(latency)
-            if i % 1 == 0:
+            if i > 0 and i % 8 == 0:
                 avg_latency = sum(decode_latencies[-8:]) / 8
                 rank_print(
-                        f"Decode. i:{i},  latency: {latency:6.5f} ms"
+                        f"Decode. i:{i},  latency: {avg_latency:6.5f} ms"
                     )
 
     # rank_print(f"After Decode. GPU memory used: {get_gpu_memory(device):.2f} MB")
