@@ -425,29 +425,29 @@ def latency_test_run_once(
 
     native_stream = torch.cuda.Stream(device=device)
 
-    # # # =============================================================================================================
-    # # # =============================================================================================================
-    # # # test finetune
-    # model_runner.load_finetune_model()
-    # # print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
+    # # =============================================================================================================
+    # # =============================================================================================================
+    # # test finetune
+    model_runner.load_finetune_model()
+    # print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
 
-    # # input_thread = threading.Thread(
-    # #     target=file_listener,
-    # #     args=(model_runner,),
-    # #     daemon=True
-    # # )
-    # # input_thread.start()
+    # input_thread = threading.Thread(
+    #     target=file_listener,
+    #     args=(model_runner,),
+    #     daemon=True
+    # )
+    # input_thread.start()
 
-    # stream_b = native_stream
+    stream_b = native_stream
 
-    # model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
+    model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
 
-    # with torch.cuda.stream(stream_b):
-    #     model_runner.finetune_train()
+    with torch.cuda.stream(stream_b):
+        model_runner.finetune_train()
 
-    # time.sleep(10000)
-    # # # =============================================================================================================
-    # # # =============================================================================================================
+    time.sleep(10000)
+    # # =============================================================================================================
+    # # =============================================================================================================
 
 
     # rank_print(f"Before running. GPU memory used: {get_gpu_memory(device):.2f} MB")
