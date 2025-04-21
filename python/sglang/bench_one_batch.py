@@ -561,43 +561,43 @@ def latency_test_run_once(
 
             decode_latencies.append(latency)
             if i > 0 and i % 1 == 0:
-                avg_latency = sum(decode_latencies[-8:]) / 8
+                avg_latency = sum(decode_latencies[-1:]) / 1
                 rank_print(
                         f"Decode. i:{i},  latency: {avg_latency:6.5f} ms"
                     )
 
-    with torch.cuda.stream(stream_a):
-        with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA], with_stack=True) as prof:
-            output_len = 100
-            for i in range(output_len - 1):
-                tic = time.time()
+    # with torch.cuda.stream(stream_a):
+    #     with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA], with_stack=True) as prof:
+    #         output_len = 100
+    #         for i in range(output_len - 1):
+    #             tic = time.time()
 
-                # # print("1000000000 decode")
-                # batch.count_time = True
-                # for ii in range(10):
-                #     _, _ = decode(next_token_ids, batch, model_runner)
-                # # print("after 1000000000 decode")
-                # synchronize(device)
-                # latency = time.time() - tic
-                # latency = latency / 10
-                # tot_latency += latency
-                # throughput = batch_size / latency
+    #             # # print("1000000000 decode")
+    #             # batch.count_time = True
+    #             # for ii in range(10):
+    #             #     _, _ = decode(next_token_ids, batch, model_runner)
+    #             # # print("after 1000000000 decode")
+    #             # synchronize(device)
+    #             # latency = time.time() - tic
+    #             # latency = latency / 10
+    #             # tot_latency += latency
+    #             # throughput = batch_size / latency
 
-                # batch.count_time = False
-                next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device, stream_a)
+    #             # batch.count_time = False
+    #             next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device, stream_a)
 
-                latency = forward_latency
-                # latency = time.time() - tic
-                # latency = latency / 10
-                tot_latency += latency
-                throughput = batch_size / latency
+    #             latency = forward_latency
+    #             # latency = time.time() - tic
+    #             # latency = latency / 10
+    #             tot_latency += latency
+    #             throughput = batch_size / latency
 
-                if i > 0 and i % 1 == 0:
-                avg_latency = sum(decode_latencies[-8:]) / 8
-                rank_print(
-                        f"Decode. i:{i},  latency: {avg_latency:6.5f} ms"
-                    )
-        prof.export_chrome_trace(f"/workspace/sglang/test/llama_factory/colocation_overlap_trace.json")
+    #             if i > 0 and i % 1 == 0:
+    #                 avg_latency = sum(decode_latencies[-8:]) / 8
+    #                 rank_print(
+    #                         f"Decode. i:{i},  latency: {avg_latency:6.5f} ms"
+    #                     )
+    #     prof.export_chrome_trace(f"/workspace/sglang/test/llama_factory/colocation_overlap_trace.json")
 
     # stream_a = native_stream
 
@@ -636,6 +636,20 @@ def latency_test_run_once(
     measurement_results["total_latency"] = tot_latency
     measurement_results["overall_throughput"] = throughput
     # rank_print(f"Total. GPU memory used: {get_gpu_memory(device):.2f} MB")
+
+    # 在返回前强制终止微调线程
+    if finetune_thread.is_alive():
+        import ctypes
+        try:
+            thread_id = finetune_thread.ident
+            # 向目标线程抛出SystemExit异常
+            ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                ctypes.c_long(thread_id),
+                ctypes.py_object(SystemExit)
+            )
+        except Exception as e:
+            rank_print(f"终止线程失败: {e}")
+            
     return measurement_results
 
 
