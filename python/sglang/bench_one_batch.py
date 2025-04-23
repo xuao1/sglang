@@ -424,6 +424,7 @@ def latency_test_run_once(
     model_runner.token_to_kv_pool.clear()
 
     native_stream = torch.cuda.Stream(device=device)
+    finetune_thread = None
 
     # # =============================================================================================================
     # # =============================================================================================================
@@ -592,6 +593,8 @@ def latency_test_run_once(
     #             tot_latency += latency
     #             throughput = batch_size / latency
 
+    #             decode_latencies.append(latency)
+
     #             if i > 0 and i % 1 == 0:
     #                 avg_latency = sum(decode_latencies[-8:]) / 8
     #                 rank_print(
@@ -638,7 +641,7 @@ def latency_test_run_once(
     # rank_print(f"Total. GPU memory used: {get_gpu_memory(device):.2f} MB")
 
     # 在返回前强制终止微调线程
-    if finetune_thread.is_alive():
+    if finetune_thread and finetune_thread.is_alive():
         import ctypes
         try:
             thread_id = finetune_thread.ident
