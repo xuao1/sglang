@@ -426,29 +426,29 @@ def latency_test_run_once(
     native_stream = torch.cuda.Stream(device=device)
     finetune_thread = None
 
-    # # =============================================================================================================
-    # # =============================================================================================================
-    # # test finetune
-    model_runner.load_finetune_model()
-    # print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
+    # # # =============================================================================================================
+    # # # =============================================================================================================
+    # # # test finetune
+    # model_runner.load_finetune_model()
+    # # print("model_runner.finetune_model.base_model.model.model.pause_train: ", model_runner.finetune_model.base_model.model.model.pause_train)
 
-    # input_thread = threading.Thread(
-    #     target=file_listener,
-    #     args=(model_runner,),
-    #     daemon=True
-    # )
-    # input_thread.start()
+    # # input_thread = threading.Thread(
+    # #     target=file_listener,
+    # #     args=(model_runner,),
+    # #     daemon=True
+    # # )
+    # # input_thread.start()
 
-    stream_b = native_stream
+    # stream_b = native_stream
 
-    model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
+    # model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
 
-    with torch.cuda.stream(stream_b):
-        model_runner.finetune_train()
+    # with torch.cuda.stream(stream_b):
+    #     model_runner.finetune_train()
 
-    time.sleep(10000)
-    # # =============================================================================================================
-    # # =============================================================================================================
+    # time.sleep(10000)
+    # # # =============================================================================================================
+    # # # =============================================================================================================
 
 
     # rank_print(f"Before running. GPU memory used: {get_gpu_memory(device):.2f} MB")
@@ -521,30 +521,30 @@ def latency_test_run_once(
     #             )
 
 
-    # # =============================================================================================================
-    # # =============================================================================================================
-    # # test finetune
-    model_runner.load_finetune_model()
+    # # # =============================================================================================================
+    # # # =============================================================================================================
+    # # # test finetune
+    # model_runner.load_finetune_model()
 
-    model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
+    # model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
 
-    def run_finetune():
-        torch.cuda.set_device(0)
-        with torch.cuda.stream(stream_b):
-            model_runner.finetune_train()
+    # def run_finetune():
+    #     torch.cuda.set_device(0)
+    #     with torch.cuda.stream(stream_b):
+    #         model_runner.finetune_train()
 
-    finetune_thread = threading.Thread(target=run_finetune, daemon=True)
-    finetune_thread.start()
+    # finetune_thread = threading.Thread(target=run_finetune, daemon=True)
+    # finetune_thread.start()
 
-    # with torch.cuda.stream(stream_b):
-    #     model_runner.finetune_train()
+    # # with torch.cuda.stream(stream_b):
+    # #     model_runner.finetune_train()
     
-    time.sleep(40)
-    print("After start finetune_train")
+    # time.sleep(40)
+    # print("After start finetune_train")
 
-    # time.sleep(10000)
-    # # =============================================================================================================
-    # # =============================================================================================================
+    # # time.sleep(10000)
+    # # # =============================================================================================================
+    # # # =============================================================================================================
 
     # Decode
     decode_latencies = []
@@ -552,6 +552,8 @@ def latency_test_run_once(
     #     f"Decode. output_len"
     # )
 
+    stream_a = native_stream
+    
     with torch.cuda.stream(stream_a):
         for i in range(output_len - 1):
             next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device, stream_a)
@@ -561,8 +563,8 @@ def latency_test_run_once(
             throughput = batch_size / latency
 
             decode_latencies.append(latency)
-            if i > 0 and i % 1 == 0:
-                avg_latency = sum(decode_latencies[-1:]) / 1
+            if i > 0 and i % 8 == 0:
+                avg_latency = sum(decode_latencies[-8:]) / 8
                 rank_print(
                         f"Decode. i:{i},  latency: {avg_latency:6.5f} ms"
                     )
