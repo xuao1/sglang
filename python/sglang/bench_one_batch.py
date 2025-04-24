@@ -409,7 +409,7 @@ def print_dataclass(obj, indent=0):
         print(obj)
 
 
-stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.6, 0.4, 0)
+formal_stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.1, 0.9, 0)
 
 def latency_test_run_once(
     run_name, model_runner, rank_print, reqs, batch_size, input_len, output_len, device
@@ -427,6 +427,7 @@ def latency_test_run_once(
 
     native_stream = torch.cuda.Stream(device=device)
     finetune_thread = None
+    LlamaModel = None
 
     # # # =============================================================================================================
     # # # =============================================================================================================
@@ -528,11 +529,14 @@ def latency_test_run_once(
     # # test finetune
     model_runner.load_finetune_model()
 
-    model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
+    LlamaModel = model_runner.finetune_model.base_model.model.model
+
+    # model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
+    LlamaModel.compute_stream = stream_b
 
     def run_finetune():
         torch.cuda.set_device(0)
-        with torch.cuda.stream(stream_b):
+        with torch.cuda.stream(LlamaModel.compute_stream):
             model_runner.finetune_train()
 
     finetune_thread = threading.Thread(target=run_finetune, daemon=True)
@@ -555,9 +559,22 @@ def latency_test_run_once(
     # )
 
     # stream_a = native_stream
+    stream_a = formal_stream_a
 
     with torch.cuda.stream(stream_a):
         for i in range(output_len - 1):
+            if LlamaModel is not None:
+                if LlamaModel.changeSM == 1:
+                    # print("In bench_one_batch changeSM = 1")
+                    LlamaModel.compute_stream = None
+                    stream_a = native_stream
+                    LlamaModel.changeSM = 0
+                elif LlamaModel.changeSM == -1:
+                    # print("In bench_one_batch changeSM = -1")
+                    LlamaModel.compute_stream = stream_b
+                    stream_a = formal_stream_a
+                    LlamaModel.changeSM = 0
+            
             next_token_ids, _, forward_latency = decode(next_token_ids, batch, model_runner, device, stream_a)
 
             latency = forward_latency
@@ -565,8 +582,8 @@ def latency_test_run_once(
             throughput = batch_size / latency
 
             decode_latencies.append(latency)
-            if i > 0 and i % 8 == 0:
-                avg_latency = sum(decode_latencies[-8:]) / 8
+            if i > 0 and i % 1 == 0:
+                avg_latency = sum(decode_latencies[-1:]) / 1
                 # rank_print(
                 #         f"Decode. i:{i},  latency: {avg_latency:6.5f} ms"
                 #     )
