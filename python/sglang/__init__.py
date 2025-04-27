@@ -80,6 +80,7 @@ __all__ += ["Anthropic", "LiteLLM", "OpenAI", "VertexAI", "RuntimeEndpoint"]
 import os
 import torch
 import freeslots
+import ctypes
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 alloc_path = os.path.join(script_dir, '/workspace/freeslots/python/freeslots/_C.cpython-310-x86_64-linux-gnu.so')
@@ -87,4 +88,16 @@ alloc_path = os.path.join(script_dir, '/workspace/freeslots/python/freeslots/_C.
 
 new_alloc = torch.cuda.memory.CUDAPluggableAllocator(
     alloc_path, 'my_malloc', 'my_free')
+
+dll = ctypes.CDLL(alloc_path)
+new_alloc._allocator.set_begin_allocate_to_pool(
+    ctypes.cast(dll.beginAllocateToPool, ctypes.c_void_p).value
+)
+new_alloc._allocator.set_end_allocate_to_pool_fn(
+    ctypes.cast(dll.endAllocateToPool, ctypes.c_void_p).value
+)
+new_alloc._allocator.set_release_pool(
+    ctypes.cast(dll.releasePool, ctypes.c_void_p).value
+)
+
 torch.cuda.memory.change_current_allocator(new_alloc)
