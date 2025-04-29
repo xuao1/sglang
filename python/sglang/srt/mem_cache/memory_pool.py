@@ -273,7 +273,7 @@ class BaseTokenToKVPool:
 
     def available_size(self):
         # return len(self.free_slots)
-        print("In BaseTokenToKVPool available_size")
+        # print("In BaseTokenToKVPool available_size")
         return self.mypool.available_size()
 
     def alloc(self, need_size: int):
@@ -295,20 +295,20 @@ class BaseTokenToKVPool:
         #     self.free_slots = torch.concat((self.free_slots, free_index.cpu()))
         # else:
         #     self.free_group.append(free_index)
-        print("In BaseTokenToKVPool free")
+        # print("In BaseTokenToKVPool free, free_index is: ", free_index)
         self.mypool.free(free_index)
 
     def free_group_begin(self):
         # self.is_not_in_free_group = False
         # self.free_group = []
-        print("In BaseTokenToKVPool free_group_begin")
+        # print("In BaseTokenToKVPool free_group_begin")
         self.mypool.free_group_begin()
 
     def free_group_end(self):
         # self.is_not_in_free_group = True
         # if self.free_group:
         #     self.free(torch.concat(self.free_group))
-        print("In BaseTokenToKVPool free_group_end")
+        # print("In BaseTokenToKVPool free_group_end")
         self.mypool.free_group_end()
 
     def clear(self):
@@ -320,15 +320,15 @@ class BaseTokenToKVPool:
         self.mypool.clear()
 
     def get_key_buffer(self, layer_id: int) -> torch.Tensor:
-        print("In BaseTokenToKVPool get_key_buffer")
+        # print("In BaseTokenToKVPool get_key_buffer")
         raise NotImplementedError()
 
     def get_value_buffer(self, layer_id: int) -> torch.Tensor:
-        print("In BaseTokenToKVPool get_value_buffer")
+        # print("In BaseTokenToKVPool get_value_buffer")
         raise NotImplementedError()
 
     def get_kv_buffer(self, layer_id: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        print("In BaseTokenToKVPool get_kv_buffer")
+        # print("In BaseTokenToKVPool get_kv_buffer")
         raise NotImplementedError()
 
     def set_kv_buffer(
