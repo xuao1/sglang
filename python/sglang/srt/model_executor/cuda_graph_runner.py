@@ -113,7 +113,7 @@ def clamp_position(seq_lens):
 class CudaGraphRunner:
     """A CudaGraphRunner runs the forward pass of a model with cuda graph and torch.compile."""
 
-    def __init__(self, model_runner: "ModelRunner"):
+    def __init__(self, model_runner: "ModelRunner", stream = None):
         # Parse args
         self.model_runner = model_runner
         self.graphs = {}
@@ -126,6 +126,7 @@ class CudaGraphRunner:
         self.is_encoder_decoder = self.model_runner.model_config.is_encoder_decoder
         self.enable_dp_attention = self.model_runner.server_args.enable_dp_attention
         self.tp_size = self.model_runner.tp_size
+        self.stream = model_runner.inference_stream
 
         # Batch sizes to capture
         if model_runner.server_args.disable_cuda_graph_padding:
@@ -256,7 +257,10 @@ class CudaGraphRunner:
 
     def capture(self):
         with graph_capture() as graph_capture_context:
-            self.stream = graph_capture_context.stream
+            # self.stream = graph_capture_context.stream
+            if self.stream == None:
+                print("Error: when capture cuda graph, self.stream = None")
+                self.stream = graph_capture_context.stream
             capture_bs = (
                 tqdm.tqdm(self.capture_bs)
                 if get_tensor_model_parallel_rank() == 0

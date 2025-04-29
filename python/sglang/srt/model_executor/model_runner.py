@@ -82,6 +82,7 @@ class ModelRunner:
         tp_size: int,
         nccl_port: int,
         server_args: ServerArgs,
+        inference_stream = None
     ):
         # Parse args
         self.model_config = model_config
@@ -94,6 +95,7 @@ class ModelRunner:
         self.server_args = server_args
         self.is_generation = model_config.is_generation
         self.is_multimodal = model_config.is_multimodal
+        self.inference_stream = inference_stream
 
         # Model-specific adjustment
         if (
@@ -722,7 +724,7 @@ class ModelRunner:
 
         tic = time.time()
         logger.info("Capture cuda graph begin. This can take up to several minutes.")
-        self.cuda_graph_runner = CudaGraphRunner(self)
+        self.cuda_graph_runner = CudaGraphRunner(self, self.inference_stream)
         logger.info(f"Capture cuda graph end. Time elapsed: {time.time() - tic:.2f} s")
 
     def apply_torch_tp(self):

@@ -153,7 +153,7 @@ class BenchArgs:
         )
 
 
-def load_model(server_args, port_args, tp_rank):
+def load_model(server_args, port_args, tp_rank, inference_stream=None):
     suppress_other_loggers()
     rank_print = print if tp_rank == 0 else lambda *args, **kwargs: None
 
@@ -175,6 +175,7 @@ def load_model(server_args, port_args, tp_rank):
         tp_size=server_args.tp_size,
         nccl_port=port_args.nccl_port,
         server_args=server_args,
+        inference_stream=inference_stream,
     )
     rank_print(f"max_total_num_tokens={model_runner.max_total_num_tokens}")
     tokenizer = get_tokenizer(
@@ -409,8 +410,9 @@ def print_dataclass(obj, indent=0):
         print(obj)
 
 
-formal_stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.6, 0.4, 0)
-# 4 倍数
+# formal_stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.6, 0.4, 0)
+# 4 的倍数
+formal_stream_a, stream_b = freeslots.create_greenctx_stream_by_value(16, 8, 0)
 
 def latency_test_run_once(
     run_name, model_runner, rank_print, reqs, batch_size, input_len, output_len, device
@@ -559,8 +561,8 @@ def latency_test_run_once(
     #     f"Decode. output_len"
     # )
 
-    stream_a = native_stream
-    # stream_a = formal_stream_a
+    # stream_a = native_stream
+    stream_a = formal_stream_a
 
     with torch.cuda.stream(stream_a):
         for i in range(output_len - 1):
@@ -583,8 +585,8 @@ def latency_test_run_once(
             throughput = batch_size / latency
 
             decode_latencies.append(latency)
-            if i > 0 and i % 8 == 0:
-                avg_latency = sum(decode_latencies[-8:]) / 8
+            if i > 0 and i % 512 == 0:
+                avg_latency = sum(decode_latencies[-16:]) / 16
                 # rank_print(
                 #         f"Decode. i:{i},  latency: {avg_latency:6.5f} ms"
                 #     )
@@ -692,7 +694,7 @@ def latency_test(
     rank_print = print if tp_rank == 0 else lambda *args, **kwargs: None
 
     # Load the model
-    model_runner, tokenizer = load_model(server_args, port_args, tp_rank)
+    model_runner, tokenizer = load_model(server_args, port_args, tp_rank, formal_stream_a)
 
     # Prepare inputs for warm up
     reqs = prepare_synthetic_inputs_for_latency_test(
