@@ -413,6 +413,8 @@ def print_dataclass(obj, indent=0):
 # formal_stream_a, stream_b = freeslots.create_greenctx_stream_by_percent(0.6, 0.4, 0)
 # 4 的倍数
 formal_stream_a, stream_b = freeslots.create_greenctx_stream_by_value(16, 8, 0)
+native_stream = torch.cuda.Stream(device='cuda:0')
+formal_stream_a = native_stream
 
 def latency_test_run_once(
     run_name, model_runner, rank_print, reqs, batch_size, input_len, output_len, device
@@ -428,7 +430,6 @@ def latency_test_run_once(
     model_runner.req_to_token_pool.clear()
     model_runner.token_to_kv_pool.clear()
 
-    native_stream = torch.cuda.Stream(device=device)
     finetune_thread = None
     LlamaModel = None
 
@@ -585,8 +586,8 @@ def latency_test_run_once(
             throughput = batch_size / latency
 
             decode_latencies.append(latency)
-            if i > 0 and i % 512 == 0:
-                avg_latency = sum(decode_latencies[-16:]) / 16
+            if i > 0 and i % 8 == 0:
+                avg_latency = sum(decode_latencies[-8:]) / 8
                 # rank_print(
                 #         f"Decode. i:{i},  latency: {avg_latency:6.5f} ms"
                 #     )
