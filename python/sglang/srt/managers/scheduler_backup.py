@@ -86,158 +86,11 @@ from sglang.srt.utils import (
 )
 from sglang.utils import get_exception_traceback
 
-import freeslots
-
 logger = logging.getLogger(__name__)
 
 # Test retract decode
 test_retract = get_bool_env_var("SGLANG_TEST_RETRACT")
 
-stream_pairs = []
-stream_as = []
-stream_values = [
-    (128, 8),
-    (116, 24),
-    (100, 40),
-    # (84, 56),
-    (72, 68),
-    (56, 84)
-]
-for a, b in stream_values:
-    stream_a, stream_b = freeslots.create_greenctx_stream_by_value(a, b, 0)
-    stream_as.append(stream_a)
-    stream_pairs.append((stream_a, stream_b))
-
-# STEP1: For every decode_SM
-# latency= bs*b0 + c0 + bs*k0*(output_len+input_len)
-B0_STEP1 = {
-    # (decode_sm): b = bs*b0 + c0
-    (16):    0.0557398161,
-    (28):    0.0975839183,
-    (44):    0.0529617624,
-    (56):    0.0622147887,
-    (72):    0.0476082114,
-    (84):    0.0523358307,
-    (100):   0.0605079188,
-    (116):   0.0492350215,
-    (128):   0.0447456836,
-    (142):   0.045930
-}
-
-C0_STEP1 = {
-    # (decode_sm): b = bs*b0 + c0
-    (16):    32.0205205094,
-    (28):    19.7329036160,
-    (44):    19.4348816577,
-    (56):    18.0394850955,
-    (72):    18.1909056824,
-    (84):    17.9521064939,
-    (100):   17.8314211460,
-    (116):   18.1778406281,
-    (128):   18.0024286310,
-    (142):   18.229668
-}
-
-K0_STEP1 = {
-    # (decode_sm): 每窗口斜率系数
-    # real_k = bs*k0
-    (16):    0.0002212730,
-    (28):    0.0001626986,
-    (44):    0.0001530758,
-    (56):    0.0001583957,
-    (72):    0.0001510395,
-    (84):    0.0001517062,
-    (100):   0.0001502722,
-    (116):   0.0001501771,
-    (128):   0.0001492154,
-    (142):   0.000151
-}
-
-K0_STEP2 = {
-    # (decode_sm): finetune 影响系数
-    (16):    0.001900086,
-    (28):    0.002353224,
-    (44):    0.002743983,
-    (56):    0.002878774,
-    (72):    0.004290609,
-    (84):    0.004208763,
-    (100):   0.006089555,
-    (116):   0.006253846,
-    (128):   0.006594455,
-    (142):   0
-}
-
-def calculate_window_latency_step1(
-    decode_sm: int, 
-    decode_bs: int, 
-    input_len: int,
-    output_len: int
-) -> float:
-    """ 预测 decode 单独运行时 latency
-    Args:
-        decode_sm: 分配的SM比例
-        decode_bs: 批处理大小 
-        input_len: 输入的序列长度
-        output_len: 输出的序列长度
-        
-    Returns:
-        预测延迟（毫秒）
-        
-    Raises:
-        KeyError: 当配置表中不存在对应参数组合时
-    """
-    # 获取基础参数
-    try:
-        b0 = B0_STEP1[(decode_sm)]
-        c0 = C0_STEP1[(decode_sm)]
-        k0 = K0_STEP1[(decode_sm)]
-    except KeyError:
-        valid_keys = set(B0_STEP1.keys()) | set(C0_STEP1.keys()) | set(K0_STEP1.keys())
-        raise ValueError(f"Unconfigured parameter combination.")
-    
-    # if decode_bs <= 4:
-    #     decode_bs = 4
-
-    b = decode_bs * b0 + c0
-    k = decode_bs * k0
-
-    return b + k * (output_len + input_len)
-
-
-def calculate_window_latency_step2(
-    decode_sm: int,
-    decode_bs: int,
-    input_len: int,
-    output_len: int,
-    finetune_sm: int
-) -> float:
-    """两阶段混合部署延迟预测
-    
-    Args:
-        decode_sm: 解码任务分配的SM比例
-        decode_bs: 解码批处理大小 
-        input_len: 输入的序列长度
-        output_len: 输出序列长度
-        finetune_sm: 微调任务占用的SM比例
-        
-    Returns:
-        最终预测延迟（毫秒）
-    """
-    # 第一阶段计算基础延迟
-    init_latency = calculate_window_latency_step1(decode_sm, decode_bs, input_len, output_len)
-    # print("decode_sm = ", decode_sm, " decode_bs = ", decode_bs, "input_len = ", input_len, " output_len = " , output_len, " init_latency = ", init_latency)
-    # print("Init latency:", init_latency)
-    
-    # 获取第二阶段影响系数
-    try:
-        k0 = K0_STEP2[(decode_sm)]
-    except KeyError:
-        valid_keys = set(K0_STEP2.keys())
-        raise ValueError(f"Unconfigured parameter combination. Valid: {valid_keys}")
-
-    # 计算最终延迟
-    real_k = k0 * init_latency  # 系数动态调整
-    return real_k * finetune_sm + init_latency
 
 class Scheduler:
     """A scheduler that manages a tensor parallel GPU worker."""
@@ -342,7 +195,6 @@ class Scheduler:
             tp_rank=tp_rank,
             dp_rank=dp_rank,
             nccl_port=port_args.nccl_port,
-            streams = stream_as
         )
 
         # Get token and memory info from the model worker
@@ -526,38 +378,6 @@ class Scheduler:
     @torch.no_grad()
     def event_loop_normal(self):
         """A normal scheduler loop."""
-        self.tp_worker.model_runner.current_stream_idx = 0
-        stream_a, stream_b = stream_pairs[self.tp_worker.model_runner.current_stream_idx]
-
-        # load finetune model and run
-        # # =============================================================================================================
-        # # =============================================================================================================
-        # # test finetune
-        self.tp_worker.model_runner.load_finetune_model()
-
-        LlamaModel = self.tp_worker.model_runner.finetune_model.base_model.model.model
-
-        # model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
-        LlamaModel.compute_stream = stream_b
-
-        def run_finetune():
-            torch.cuda.set_device(0)
-            with torch.cuda.stream(LlamaModel.compute_stream):
-                self.tp_worker.model_runner.finetune_train()
-
-        finetune_thread = threading.Thread(target=run_finetune, daemon=True)
-        finetune_thread.start()
-
-        # with torch.cuda.stream(stream_b):
-        #     model_runner.finetune_train()
-        
-        time.sleep(30)
-        print("After start finetune_train")
-
-        # time.sleep(10000)
-        # # =============================================================================================================
-        # # =============================================================================================================
-
         while True:
             recv_reqs = self.recv_requests()
             self.process_input_requests(recv_reqs)
@@ -569,50 +389,12 @@ class Scheduler:
             self.cur_batch = batch
 
             if batch:
-                # if LlamaModel is not None:
-                #     if LlamaModel.changeSM == 1:
-                #         # print("In bench_one_batch changeSM = 1")
-                #         LlamaModel.compute_stream = None
-                #         stream_a = native_stream
-                #         LlamaModel.changeSM = 0
-                #     elif LlamaModel.changeSM == -1:
-                #         # print("In bench_one_batch changeSM = -1")
-                #         LlamaModel.compute_stream = stream_b
-                #         stream_a = formal_stream_a
-                #         LlamaModel.changeSM = 0
-
-                # predict model
-                batch_size = batch.batch_size() if batch else 0
-                seq_len = batch.seq_lens_sum/batch_size if batch else 0
-                stream_a_value, stream_b_value = stream_values[self.tp_worker.model_runner.current_stream_idx]
-                predicted_latency = calculate_window_latency_step2(
-                    stream_a_value,
-                    batch_size,
-                    0,
-                    seq_len,
-                    stream_b_value
-                )
-                # print("predicted_latency = ", predicted_latency)
-                if predicted_latency > 40:
-                    # print("predicted_latency > 40, current_stream_idx = ", self.tp_worker.model_runner.current_stream_idx)
-                    self.tp_worker.model_runner.current_stream_idx = max(0, self.tp_worker.model_runner.current_stream_idx - 1)
-                    stream_a, stream_b = stream_pairs[self.tp_worker.model_runner.current_stream_idx]
-                    LlamaModel.compute_stream = stream_b
-                elif predicted_latency < 30:
-                    # print("predicted_latency < 30, current_stream_idx = ", self.tp_worker.model_runner.current_stream_idx)
-                    self.tp_worker.model_runner.current_stream_idx = min(4, self.tp_worker.model_runner.current_stream_idx + 1)
-                    stream_a, stream_b = stream_pairs[self.tp_worker.model_runner.current_stream_idx]
-                    LlamaModel.compute_stream = stream_b
-
                 result = self.run_batch(batch)
-                # if batch.forward_mode.is_extend():
-                #     print(batch.output_ids)
                 self.process_batch_result(batch, result)
             else:
-                # Self-check and re-init some states when the server is `idle`
+                # Self-check and re-init some states when the server is idle
                 self.check_memory()
                 self.new_token_ratio = self.init_new_token_ratio
-                time.sleep(0.01)
 
             self.last_batch = batch
 
@@ -912,14 +694,14 @@ class Scheduler:
         available_size = (
             self.token_to_kv_pool.available_size() + self.tree_cache.evictable_size()
         )
-        # if available_size != self.max_total_num_tokens:
-        #     msg = (
-        #         "KV cache pool leak detected!"
-        #         f"{available_size=}, {self.max_total_num_tokens=}\n"
-        #     )
-        #     warnings.warn(msg)
-        #     if crash_on_warnings():
-        #         raise ValueError(msg)
+        if available_size != self.max_total_num_tokens:
+            msg = (
+                "KV cache pool leak detected!"
+                f"{available_size=}, {self.max_total_num_tokens=}\n"
+            )
+            warnings.warn(msg)
+            if crash_on_warnings():
+                raise ValueError(msg)
 
         if len(self.req_to_token_pool.free_slots) != self.req_to_token_pool.size:
             msg = (
@@ -950,19 +732,9 @@ class Scheduler:
 
         # Run prefill first if possible
         new_batch = self.get_new_batch_prefill()
-        # if new_batch is not None:
-        #     return new_batch
-
         if new_batch is not None:
-            new_batch.output_ids = torch.zeros(
-                new_batch.batch_size(),
-                dtype=torch.int32,
-                device=self.device,
-            )
-            if self.running_batch is None:
-                self.running_batch = new_batch
-            else:
-                self.running_batch.merge_batch(new_batch)
+            return new_batch
+
         # Run decode
         if self.running_batch is None:
             return None
@@ -1052,8 +824,8 @@ class Scheduler:
             self.being_chunked_req.is_being_chunked += 1
 
         # Print stats
-        # if self.tp_rank == 0:
-        #     self.log_prefill_stats(adder, can_run_list, running_bs, has_being_chunked)
+        if self.tp_rank == 0:
+            self.log_prefill_stats(adder, can_run_list, running_bs, has_being_chunked)
 
         # Create a new batch
         new_batch = ScheduleBatch.init_new(
@@ -1323,11 +1095,11 @@ class Scheduler:
         self.token_to_kv_pool.free_group_end()
 
         self.forward_ct_decode = (self.forward_ct_decode + 1) % (1 << 30)
-        # if (
-        #     self.tp_rank == 0
-        #     and self.forward_ct_decode % self.server_args.decode_log_interval == 0
-        # ):
-        #     self.log_decode_stats()
+        if (
+            self.tp_rank == 0
+            and self.forward_ct_decode % self.server_args.decode_log_interval == 0
+        ):
+            self.log_decode_stats()
 
     def add_logprob_return_values(
         self,

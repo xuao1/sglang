@@ -44,7 +44,6 @@ class TpModelWorker:
         tp_rank: int,
         dp_rank: Optional[int],
         nccl_port: int,
-        streams
     ):
         # Parse args
         self.tp_rank = tp_rank
@@ -68,7 +67,6 @@ class TpModelWorker:
             tp_size=server_args.tp_size,
             nccl_port=nccl_port,
             server_args=server_args,
-            inference_stream = streams
         )
         if server_args.skip_tokenizer_init:
             self.tokenizer = self.processor = None

@@ -37,6 +37,8 @@ from sglang.srt.utils import maybe_torch_compile, monkey_patch_vllm_all_gather
 if TYPE_CHECKING:
     from sglang.srt.model_executor.model_runner import ModelRunner
 
+from collections import defaultdict
+
 
 def _to_torch(model: torch.nn.Module, reverse: bool, batch_size: int):
     for sub in model._modules.values():
@@ -113,12 +115,12 @@ def clamp_position(seq_lens):
 class CudaGraphRunner:
     """A CudaGraphRunner runs the forward pass of a model with cuda graph and torch.compile."""
 
-    def __init__(self, model_runner: "ModelRunner", stream = None):
+    def __init__(self, model_runner: "ModelRunner"):
         # Parse args
         self.model_runner = model_runner
-        self.graphs = {}
+        self.graphs = defaultdict(dict) 
         self.input_buffers = {}
-        self.output_buffers = {}
+        self.output_buffers = defaultdict(dict)
         self.flashinfer_handlers = {}
         self.graph_memory_pool = None
         self.use_torch_compile = model_runner.server_args.enable_torch_compile
@@ -126,13 +128,15 @@ class CudaGraphRunner:
         self.is_encoder_decoder = self.model_runner.model_config.is_encoder_decoder
         self.enable_dp_attention = self.model_runner.server_args.enable_dp_attention
         self.tp_size = self.model_runner.tp_size
-        self.stream = model_runner.inference_stream
+        # self.stream = model_runner.inference_stream
+        self.streams = model_runner.inference_streams
 
         # Batch sizes to capture
         if model_runner.server_args.disable_cuda_graph_padding:
             self.capture_bs = list(range(1, 33)) + [64, 128]
         else:
-            self.capture_bs = [1, 2, 4] + [i * 8 for i in range(1, 21)]
+            # self.capture_bs = [1, 2, 4] + [i * 8 for i in range(1, 21)]
+            self.capture_bs = [1, 4, 8] + [i * 16 for i in range(1, 9)]
 
         if max(self.capture_bs) > model_runner.req_to_token_pool.size:
             # In some case (e.g., with a small GPU or --max-running-requests), the #max-running-requests
@@ -258,31 +262,39 @@ class CudaGraphRunner:
     def capture(self):
         with graph_capture() as graph_capture_context:
             # self.stream = graph_capture_context.stream
-            if self.stream == None:
-                print("Error: when capture cuda graph, self.stream = None")
-                self.stream = graph_capture_context.stream
+            # if self.stream == None:
+            #     print("Error: when capture cuda graph, self.stream = None")
+            #     self.stream = graph_capture_context.stream
             capture_bs = (
                 tqdm.tqdm(self.capture_bs)
                 if get_tensor_model_parallel_rank() == 0
                 else self.capture_bs
             )
-            for bs in capture_bs:
-                with patch_model(
-                    self.model_runner.model,
-                    bs in self.compile_bs,
-                    bs,
-                    self.model_runner.tp_group,
-                ) as forward:
-                    (
-                        graph,
-                        output_buffers,
-                    ) = self.capture_one_batch_size(bs, forward)
-                    self.graphs[bs] = graph
-                    self.output_buffers[bs] = output_buffers
 
-    def capture_one_batch_size(self, bs: int, forward: Callable):
+            num_streams = len(self.streams)
+            for bs in capture_bs:
+                # print("Capture cuda graph for bs:", bs)
+                self.graphs[bs] = [None] * num_streams
+                self.output_buffers[bs] = [None] * num_streams
+
+            for stream_idx, stream in enumerate(self.streams):
+                for bs in capture_bs:
+                    with patch_model(
+                        self.model_runner.model,
+                        bs in self.compile_bs,
+                        bs,
+                        self.model_runner.tp_group,
+                    ) as forward:
+                        (
+                            graph,
+                            output_buffers,
+                        ) = self.capture_one_batch_size(bs, stream, forward)
+                        self.graphs[bs][stream_idx] = graph
+                        self.output_buffers[bs][stream_idx] = output_buffers
+
+    def capture_one_batch_size(self, bs: int, stream: torch.cuda.Stream, forward: Callable):
         graph = torch.cuda.CUDAGraph()
-        stream = self.stream
+        # stream = self.stream
 
         # Common inputs
         input_ids = self.input_ids[:bs]
@@ -393,8 +405,10 @@ class CudaGraphRunner:
         )
 
         # Replay
-        self.graphs[bs].replay()
-        next_token_logits = self.output_buffers[bs][:raw_bs]
+        current_stream_idx = self.model_runner.current_stream_idx
+        # self.graphs[bs].replay()
+        self.graphs[bs][current_stream_idx].replay()
+        next_token_logits = self.output_buffers[bs][current_stream_idx][:raw_bs]
 
         # Extract logprobs
         if forward_batch.return_logprob:

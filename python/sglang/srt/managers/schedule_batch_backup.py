@@ -212,7 +212,6 @@ class Req:
     ):
         # Input and output info
         self.rid = rid
-        self.output_len = 0
         self.origin_input_text = origin_input_text
         self.origin_input_ids_unpadded = (
             origin_input_ids_unpadded
@@ -991,16 +990,13 @@ class ScheduleBatch:
         self.forward_mode = ForwardMode.DECODE
 
         self.input_ids = self.output_ids
-        # print("In prepare_for_decode")
-        # self.output_ids = None
+        self.output_ids = None
         self.sampling_info.penalizer_orchestrator.cumulate_output_tokens(self.input_ids)
 
         # Alloc mem
         bs = len(self.reqs)
-        # print(f"bs: {bs}")
         
         self.out_cache_loc = self.alloc_token_slots(bs)
-        # print(f"out_cache_loc: {self.out_cache_loc}")
 
         if self.model_config.is_encoder_decoder:
             locs = self.encoder_lens + self.seq_lens
