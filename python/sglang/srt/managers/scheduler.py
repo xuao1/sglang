@@ -93,20 +93,20 @@ logger = logging.getLogger(__name__)
 # Test retract decode
 test_retract = get_bool_env_var("SGLANG_TEST_RETRACT")
 
-stream_pairs = []
-stream_as = []
-stream_values = [
-    (128, 8),
-    (116, 24),
-    (100, 40),
-    # (84, 56),
-    (72, 68),
-    (56, 84)
-]
-for a, b in stream_values:
-    stream_a, stream_b = freeslots.create_greenctx_stream_by_value(a, b, 0)
-    stream_as.append(stream_a)
-    stream_pairs.append((stream_a, stream_b))
+# stream_pairs = []
+# stream_as = []
+# stream_values = [
+#     (128, 8),
+#     (116, 24),
+#     (100, 40),
+#     # (84, 56),
+#     (72, 68),
+#     (56, 84)
+# ]
+# for a, b in stream_values:
+#     stream_a, stream_b = freeslots.create_greenctx_stream_by_value(a, b, 0)
+#     stream_as.append(stream_a)
+#     stream_pairs.append((stream_a, stream_b))
 
 # STEP1: For every decode_SM
 # latency= bs*b0 + c0 + bs*k0*(output_len+input_len)
