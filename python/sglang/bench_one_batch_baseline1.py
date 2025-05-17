@@ -555,16 +555,18 @@ stream_values = [
     # (100, 40),
     # (84, 56),
     # (72, 68),
-    # (56, 52)
-    (28, 80)
+    # (56, 84)
+    (44, 96)
 ]
-for a, b in stream_values:
-    stream_a, stream_b = freeslots.create_greenctx_stream_by_value(a, b, 0)
-    stream_as.append(stream_a)
-    stream_pairs.append((stream_a, stream_b))
+# for a, b in stream_values:
+#     stream_a, stream_b = freeslots.create_greenctx_stream_by_value(a, b, 0)
+#     stream_as.append(stream_a)
+#     stream_pairs.append((stream_a, stream_b))
 
 native_stream = torch.cuda.Stream(device='cuda:0')
-# formal_stream_a = native_stream
+stream_a, stream_b = native_stream, None
+stream_as.append(stream_a)
+stream_pairs.append((stream_a, stream_b))
 
 def latency_test_run_once(
     run_name, model_runner: ModelRunner, rank_print, reqs, batch_size, input_len, output_len, device
@@ -586,7 +588,7 @@ def latency_test_run_once(
     model_runner.current_stream_idx = 0
     formal_stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
 
-    df = pd.read_csv("/workspace/sglang/python/sglang/AzureLLMInferenceTrace_conv_timequator.csv")
+    df = pd.read_csv("/workspace/sglang/python/sglang/AzureLLMInferenceTrace_conv.csv")
 
     # 转换时间戳列到datetime对象
     df["TIMESTAMP"] = pd.to_datetime(df["TIMESTAMP"])
@@ -713,33 +715,33 @@ def latency_test_run_once(
     #             )
 
 
-    # # =============================================================================================================
-    # # =============================================================================================================
-    # # test finetune
-    model_runner.load_finetune_model()
+    # # # =============================================================================================================
+    # # # =============================================================================================================
+    # # # test finetune
+    # model_runner.load_finetune_model()
 
-    LlamaModel = model_runner.finetune_model.base_model.model.model
+    # LlamaModel = model_runner.finetune_model.base_model.model.model
 
-    # model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
-    LlamaModel.compute_stream = stream_b
+    # # model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
+    # LlamaModel.compute_stream = stream_b
 
-    def run_finetune():
-        torch.cuda.set_device(0)
-        with torch.cuda.stream(LlamaModel.compute_stream):
-            model_runner.finetune_train()
+    # def run_finetune():
+    #     torch.cuda.set_device(0)
+    #     with torch.cuda.stream(LlamaModel.compute_stream):
+    #         model_runner.finetune_train()
 
-    finetune_thread = threading.Thread(target=run_finetune, daemon=True)
-    finetune_thread.start()
+    # finetune_thread = threading.Thread(target=run_finetune, daemon=True)
+    # finetune_thread.start()
 
-    # with torch.cuda.stream(stream_b):
-    #     model_runner.finetune_train()
+    # # with torch.cuda.stream(stream_b):
+    # #     model_runner.finetune_train()
     
-    time.sleep(30)
-    print("After start finetune_train")
+    # time.sleep(30)
+    # print("After start finetune_train")
 
-    # time.sleep(10000)
-    # # =============================================================================================================
-    # # =============================================================================================================
+    # # time.sleep(10000)
+    # # # =============================================================================================================
+    # # # =============================================================================================================
 
     # Decode
     decode_latencies = []

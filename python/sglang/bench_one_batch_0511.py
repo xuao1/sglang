@@ -550,13 +550,13 @@ def print_dataclass(obj, indent=0):
 stream_pairs = []
 stream_as = []
 stream_values = [
-    # (128, 8),
+    (128, 8),
     # (116, 24),
-    # (100, 40),
+    (100, 40),
     # (84, 56),
-    # (72, 68),
-    # (56, 52)
-    (28, 80)
+    (72, 68),
+    (56, 84),
+    (44, 96)
 ]
 for a, b in stream_values:
     stream_a, stream_b = freeslots.create_greenctx_stream_by_value(a, b, 0)
@@ -586,7 +586,7 @@ def latency_test_run_once(
     model_runner.current_stream_idx = 0
     formal_stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
 
-    df = pd.read_csv("/workspace/sglang/python/sglang/AzureLLMInferenceTrace_conv_timequator.csv")
+    df = pd.read_csv("/workspace/sglang/python/sglang/filtered_output.csv")
 
     # 转换时间戳列到datetime对象
     df["TIMESTAMP"] = pd.to_datetime(df["TIMESTAMP"])
@@ -596,12 +596,9 @@ def latency_test_run_once(
     df["rel_time_ms"] = (df["TIMESTAMP"] - base_time).dt.total_seconds() * 1000  # 转换为毫秒
 
     # 生成所有请求和对应的时间
-    # print("model_runner.model_config.context_len = ", model_runner.model_config.context_len)
-
     all_reqs = []
     for _, row in df.iterrows():
-        # if row["ContextTokens"] + row["GeneratedTokens"] > model_runner.model_config.context_len + 4:
-        if row["ContextTokens"] + row["GeneratedTokens"] > 8192 + 4:
+        if row["ContextTokens"] + row["GeneratedTokens"] > model_runner.model_config.context_len + 4:
             print("ContextTokens + GeneratedTokens > context_len + 4, ContextTokens + GeneratedTokens = ", row["ContextTokens"] + row["GeneratedTokens"], " context_len = ", model_runner.model_config.context_len)
             continue
         # 每个请求的batch_size=1
@@ -832,7 +829,7 @@ def latency_test_run_once(
                     LlamaModel.compute_stream = stream_b
                 elif predicted_latency < 35:
                     # print("predicted_latency < 30, current_stream_idx = ", self.tp_worker.model_runner.current_stream_idx)
-                    model_runner.current_stream_idx = min(0, model_runner.current_stream_idx + 1)
+                    model_runner.current_stream_idx = min(4, model_runner.current_stream_idx + 1)
                     stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
                     LlamaModel.compute_stream = stream_b
             
@@ -872,8 +869,7 @@ def latency_test_run_once(
             throughput = batch_size / latency
 
             decode_latencies.append(latency)
-            # print(f"Decode current_time:{current_time}, batch_size: {batch.batch_size()}, latency: {latency:6.5f} ms, predicted_latency: {predicted_latency:6.5f} ms, model_runner.current_stream_idx: {model_runner.current_stream_idx}")
-            print(f"Decode current_time:{current_time}, batch_size: {batch.batch_size()}, latency: {latency:6.5f} ms")
+            print(f"Decode current_time:{current_time}, batch_size: {batch.batch_size()}, latency: {latency:6.5f} ms, predicted_latency: {predicted_latency:6.5f} ms, model_runner.current_stream_idx: {model_runner.current_stream_idx}")
             # if i > 0 and i % 8 == 0:
             #     avg_latency = sum(decode_latencies[-8:]) / 8
             #     print(
