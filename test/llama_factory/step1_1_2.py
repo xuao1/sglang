@@ -18,7 +18,7 @@ def process_log_file(log_path):
 
 def process_block(batch, stream_a, content):
     decode_lines = re.findall(
-        r'Decode\. i:(\d+),\s+latency:\s+([\d.]+)\s+ms', 
+        r'.*Decode\. i:(\d+),\s+latency:\s+([\d.]+)\s+ms', 
         content
     )
     
@@ -42,4 +42,4 @@ if __name__ == "__main__":
     #     if f.endswith('.csv'):
     #         os.remove(f)
     
-    process_log_file('test.log')
+    process_log_file('test1_2.log')

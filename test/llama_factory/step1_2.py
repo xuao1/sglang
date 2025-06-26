@@ -3,7 +3,7 @@ import csv
 
 def parse_log_to_csv(log_path, csv_path):
     batch_pattern = re.compile(r'===== Batch: (\d+), Stream_a: ([\d.]+) =====')
-    decode_pattern = re.compile(r'Decode\. i:(\d+),\s+latency: ([\d.]+) ms')
+    decode_pattern = re.compile(r'\[.*?\]\s+Decode\. i:(\d+),\s+latency: ([\d.]+) ms')
     
     with open(log_path, 'r') as f_in, open(csv_path, 'w', newline='') as f_out:
         writer = csv.writer(f_out)
@@ -13,21 +13,22 @@ def parse_log_to_csv(log_path, csv_path):
         current_stream_a = None
         
         for line in f_in:
+            line = line.strip()
             # 匹配批次信息
-            batch_match = batch_pattern.match(line.strip())
-            if batch_match:
-                current_batch = batch_match.group(1)
-                current_stream_a = batch_match.group(2)
+            if batch_pattern.match(line):
+                match = batch_pattern.match(line)
+                current_batch = match.group(1)
+                current_stream_a = match.group(2)
                 continue
             
             # 匹配延迟信息
-            decode_match = decode_pattern.match(line.strip())
-            if decode_match and current_batch and current_stream_a:
-                i = decode_match.group(1)
-                latency = decode_match.group(2)
+            if decode_pattern.match(line) and current_batch and current_stream_a:
+                match = decode_pattern.match(line)
+                i = match.group(1)
+                latency = match.group(2)
                 
-                # 构建三元组字符串
-                triple = f'({current_batch},{i},{current_stream_a})'
+                # 关键修改：添加单引号前缀
+                triple = f"'({current_batch},{i},{current_stream_a})"
                 writer.writerow([triple, latency])
 
 if __name__ == "__main__":

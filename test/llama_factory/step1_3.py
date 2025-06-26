@@ -8,7 +8,7 @@ def parse_log(log_path):
         r'===== Batch: (\d+) \| Stream_a: ([\d.]+) \| Stream_b: ([\d.]+) ====='
     )
     decode_pattern = re.compile(
-        r'Decode\. i:(\d+),\s+latency: ([\d.]+) ms'
+        r'\[.*?\]\s+Decode\. i:(\d+),\s+latency: ([\d.]+) ms'
     )
     
     # 数据结构：{(batch, i, stream_a): {stream_b: latency}}
@@ -63,7 +63,7 @@ def write_csv(data, stream_b_list, output_path):
             writer.writerow(row)
 
 if __name__ == "__main__":
-    input_log = "test1_3.log"
+    input_log = "test1_3_forward.log"
     output_csv = "output.csv"
     
     log_data, stream_b_values = parse_log(input_log)

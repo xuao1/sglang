@@ -1,5 +1,5 @@
 ### model
-model_name_or_path: /model/Qwen2.5-7B-Instruct/
+model_name_or_path: /model/Meta-Llama-3-8B-Instruct/
 trust_remote_code: true
 
 ### method
