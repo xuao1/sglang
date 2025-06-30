@@ -75,6 +75,7 @@ import pandas as pd
 import datetime
 
 import gc
+import sys
 
 gc.disable()
 
@@ -550,12 +551,12 @@ def print_dataclass(obj, indent=0):
 stream_pairs = []
 stream_as = []
 stream_values = [
-    (128, 8),
-    (116, 24),
-    (100, 40),
-    # (84, 56),
-    (72, 68),
-    (56, 84)
+    # (128, 8),
+    # (116, 24),
+    # (100, 40),
+    (84, 56),
+    # (72, 68),
+    # (56, 84)
 ]
 for a, b in stream_values:
     stream_a, stream_b = freeslots.create_greenctx_stream_by_value(a, b, 0)
@@ -585,34 +586,34 @@ def latency_test_run_once(
     model_runner.current_stream_idx = 0
     formal_stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
 
-    df = pd.read_csv("/workspace/sglang/python/sglang/AzureLLMInferenceTrace_conv.csv")
+    # df = pd.read_csv("/workspace/sglang/python/sglang/filtered_output.csv")
 
-    # 转换时间戳列到datetime对象
-    df["TIMESTAMP"] = pd.to_datetime(df["TIMESTAMP"])
+    # # 转换时间戳列到datetime对象
+    # df["TIMESTAMP"] = pd.to_datetime(df["TIMESTAMP"])
 
-    # 计算相对时间（以第一个请求的时间为基准）
-    base_time = df["TIMESTAMP"].iloc[0]
-    df["rel_time_ms"] = (df["TIMESTAMP"] - base_time).dt.total_seconds() * 1000  # 转换为毫秒
+    # # 计算相对时间（以第一个请求的时间为基准）
+    # base_time = df["TIMESTAMP"].iloc[0]
+    # df["rel_time_ms"] = (df["TIMESTAMP"] - base_time).dt.total_seconds() * 1000  # 转换为毫秒
 
-    # 生成所有请求和对应的时间
-    all_reqs = []
-    for _, row in df.iterrows():
-        if row["ContextTokens"] + row["GeneratedTokens"] > model_runner.model_config.context_len + 4:
-            print("ContextTokens + GeneratedTokens > context_len + 4, ContextTokens + GeneratedTokens = ", row["ContextTokens"] + row["GeneratedTokens"], " context_len = ", model_runner.model_config.context_len)
-            continue
-        # 每个请求的batch_size=1
-        req_group = prepare_synthetic_inputs_for_latency_test(
-            batch_size=1,
-            input_len=row["ContextTokens"],
-            output_len=row["GeneratedTokens"]
-        )
-        all_reqs.extend([{
-            "req": req,
-            "arrival_time": row["rel_time_ms"]
-        } for req in req_group])
+    # # 生成所有请求和对应的时间
+    # all_reqs = []
+    # for _, row in df.iterrows():
+    #     if row["ContextTokens"] + row["GeneratedTokens"] > model_runner.model_config.context_len + 4:
+    #         print("ContextTokens + GeneratedTokens > context_len + 4, ContextTokens + GeneratedTokens = ", row["ContextTokens"] + row["GeneratedTokens"], " context_len = ", model_runner.model_config.context_len)
+    #         continue
+    #     # 每个请求的batch_size=1
+    #     req_group = prepare_synthetic_inputs_for_latency_test(
+    #         batch_size=1,
+    #         input_len=row["ContextTokens"],
+    #         output_len=row["GeneratedTokens"]
+    #     )
+    #     all_reqs.extend([{
+    #         "req": req,
+    #         "arrival_time": row["rel_time_ms"]
+    #     } for req in req_group])
 
-    # 按到达时间排序
-    all_reqs.sort(key=lambda x: x["arrival_time"])
+    # # 按到达时间排序
+    # all_reqs.sort(key=lambda x: x["arrival_time"])
 
     # # # =============================================================================================================
     # # # =============================================================================================================
@@ -744,31 +745,46 @@ def latency_test_run_once(
     stream_a = formal_stream_a
     current_time = 0.0  # 当前模拟时间（毫秒）
     req_ptr = 0         # 指向下一个要处理的请求
-    all_reqs_len = len(all_reqs)
+    # all_reqs_len = len(all_reqs)
     batch = None
     last_current_stream_idx = 0
 
     with torch.cuda.stream(stream_a):
-        # for i in range(output_len - 1):
-        while batch is not None or req_ptr < all_reqs_len:
+        for i in range(output_len - 1):
+        # while batch is not None or req_ptr < all_reqs_len:
+        # while (batch is not None and len(batch.reqs) != 0) or req_ptr < all_reqs_len:
             # batch 的加入
-            # if i % 1024 == 0:
-            while req_ptr < all_reqs_len and current_time >= all_reqs[req_ptr]["arrival_time"]:
+            if i % 1536 == 0:
+            # while req_ptr < all_reqs_len and current_time >= all_reqs[req_ptr]["arrival_time"]:
                 # next_reqs = prepare_synthetic_inputs_for_latency_test(32, 128, 2048)
+                if i == 0:
+                    next_reqs = prepare_synthetic_inputs_for_latency_test(17, 128, 1536)
+                elif i == 1536:
+                    next_reqs = prepare_synthetic_inputs_for_latency_test(48, 128, 1536)
+                elif i == 3072:
+                    next_reqs = prepare_synthetic_inputs_for_latency_test(24, 128, 1536)
+                else:
+                    print("Error: i = ", i)
+                    continue
+                print("1")
                 new_batch = ScheduleBatch.init_new(
-                    reqs=[all_reqs[req_ptr]["req"]],
+                    # reqs=[all_reqs[req_ptr]["req"]],
+                    reqs=next_reqs,
                     req_to_token_pool=model_runner.req_to_token_pool,
                     token_to_kv_pool=model_runner.token_to_kv_pool,
                     tree_cache=None,
                     model_config=model_runner.model_config,
                     enable_overlap=False,
                 )
+                print("2")
                 new_batch.prepare_for_extend()
+                print("3")
                 new_batch.output_ids = torch.zeros(
                     new_batch.batch_size(),
                     dtype=torch.int32,
                     device=device,
                 )
+                print("4")
                 # if batch is None:
                 if batch is None or len(batch.reqs) == 0:
                     batch = new_batch
@@ -776,85 +792,99 @@ def latency_test_run_once(
                     batch.merge_batch(new_batch)
 
                 req_ptr += 1
+                print("5")
 
+            print("6")
             batch.filter_batch()
+            print("7")
 
             if len(batch.reqs) == 0:
                 time.sleep(0.001)
                 current_time += 1   # 1ms
                 continue
+            print("8")
 
             batch.prepare_for_decode()
+            print("9")
             # print(f"i:{i}, bs: {batch.batch_size()}")
             # print("batch.seq_len_sum: ", batch.seq_lens_sum)        
 
-            if LlamaModel is not None:
-                if LlamaModel.changeSM == 1 and model_runner.current_stream_idx != 0:
-                    # print("In bench_one_batch changeSM = 1")
-                    # LlamaModel.compute_stream = None
-                    # stream_a = native_stream
-                    # LlamaModel.changeSM = 0
-                    last_current_stream_idx = model_runner.current_stream_idx
-                    model_runner.current_stream_idx = 0
-                    stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
-                    LlamaModel.compute_stream = stream_b
-                elif LlamaModel.changeSM == -1:
-                    # print("In bench_one_batch changeSM = -1")
-                    # LlamaModel.compute_stream = stream_b
-                    # stream_a = formal_stream_a
-                    # LlamaModel.changeSM = 0
-                    model_runner.current_stream_idx = last_current_stream_idx
-                    stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
-                    LlamaModel.compute_stream = stream_b
-                    LlamaModel.changeSM = 0
+            # if LlamaModel is not None:
+            #     if LlamaModel.changeSM == 1 and model_runner.current_stream_idx != 0:
+            #         # print("In bench_one_batch changeSM = 1")
+            #         # LlamaModel.compute_stream = None
+            #         # stream_a = native_stream
+            #         # LlamaModel.changeSM = 0
+            #         last_current_stream_idx = model_runner.current_stream_idx
+            #         model_runner.current_stream_idx = 0
+            #         stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
+            #         LlamaModel.compute_stream = stream_b
+            #     elif LlamaModel.changeSM == -1:
+            #         # print("In bench_one_batch changeSM = -1")
+            #         # LlamaModel.compute_stream = stream_b
+            #         # stream_a = formal_stream_a
+            #         # LlamaModel.changeSM = 0
+            #         model_runner.current_stream_idx = last_current_stream_idx
+            #         stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
+            #         LlamaModel.compute_stream = stream_b
+            #         LlamaModel.changeSM = 0
 
-            # predict model
-            if LlamaModel is not None and LlamaModel.changeSM != 1:
-                bs = batch.batch_size() if batch else 0
-                seq_len = batch.seq_lens_sum/bs if batch else 0
-                stream_a_value, stream_b_value = stream_values[model_runner.current_stream_idx]
-                predicted_latency = calculate_window_latency_step2(
-                    stream_a_value,
-                    bs,
-                    0,
-                    seq_len,
-                    stream_b_value
-                )
-                # print("predicted_latency = ", predicted_latency)
-                if predicted_latency > 45:
-                    # print("predicted_latency > 40, current_stream_idx = ", model_runner.current_stream_idx)
-                    model_runner.current_stream_idx = max(0, model_runner.current_stream_idx - 1)
-                    stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
-                    LlamaModel.compute_stream = stream_b
-                elif predicted_latency < 35:
-                    # print("predicted_latency < 30, current_stream_idx = ", self.tp_worker.model_runner.current_stream_idx)
-                    model_runner.current_stream_idx = min(4, model_runner.current_stream_idx + 1)
-                    stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
-                    LlamaModel.compute_stream = stream_b
-            
+            # # predict model
+            # if LlamaModel is not None and LlamaModel.changeSM != 1:
+            #     bs = batch.batch_size() if batch else 0
+            #     seq_len = batch.seq_lens_sum/bs if batch else 0
+            #     stream_a_value, stream_b_value = stream_values[model_runner.current_stream_idx]
+            #     predicted_latency = calculate_window_latency_step2(
+            #         stream_a_value,
+            #         bs,
+            #         0,
+            #         seq_len,
+            #         stream_b_value
+            #     )
+            #     # print("predicted_latency = ", predicted_latency)
+            #     if predicted_latency > 45:
+            #         # print("predicted_latency > 40, current_stream_idx = ", model_runner.current_stream_idx)
+            #         model_runner.current_stream_idx = max(0, model_runner.current_stream_idx - 1)
+            #         stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
+            #         LlamaModel.compute_stream = stream_b
+            #     elif predicted_latency < 35:
+            #         # print("predicted_latency < 30, current_stream_idx = ", self.tp_worker.model_runner.current_stream_idx)
+            #         model_runner.current_stream_idx = min(4, model_runner.current_stream_idx + 1)
+            #         stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
+            #         LlamaModel.compute_stream = stream_b
+            print("10")
             model_worker_batch = batch.get_model_worker_batch()
             forward_batch = ForwardBatch.init_new(model_worker_batch, model_runner)
             # print("forward_batch.input_ids: ", forward_batch.input_ids)
-
+            print("11")
             completion_event_start = None
             completion_event_end = None
             completion_event_start = torch.cuda.Event(enable_timing=True)
             completion_event_end = torch.cuda.Event(enable_timing=True)
             stream = stream_a
+            print("12")
 
             if stream is not None:
+                print("13")
                 completion_event_start.record(stream=stream)
+                completion_event_start.synchronize()
                 with torch.cuda.stream(stream):
                     forward_num = 1
                     for ii in range(forward_num):
+                        print("13_1")
                         logits_output = model_runner.forward(forward_batch)
+                        print("13_2")
                     completion_event_end.record(stream=stream)
                 
+                print("13_3")
                 completion_event_end.synchronize()
+                print("13_4")
                 latency = completion_event_start.elapsed_time(completion_event_end)
 
                 latency = latency / forward_num
+                print("14")
             else:
+                print("15")
                 print("decode, in else")
                 tic = time.time()
                 forward_num = 1
@@ -862,13 +892,17 @@ def latency_test_run_once(
                     logits_output = model_runner.forward(forward_batch)
                 latency = time.time() - tic
                 latency = latency / forward_num
+                print("16")
 
+            print("17")
             tot_latency += latency
             current_time += latency
             throughput = batch_size / latency
 
+            print("18")
             decode_latencies.append(latency)
             print(f"Decode current_time:{current_time}, batch_size: {batch.batch_size()}, latency: {latency:6.5f} ms")
+            sys.stdout.flush()
             # if i > 0 and i % 8 == 0:
             #     avg_latency = sum(decode_latencies[-8:]) / 8
             #     print(

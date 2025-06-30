@@ -739,8 +739,14 @@ class ModelRunner:
         if self.cuda_graph_runner and self.cuda_graph_runner.can_run(forward_batch):
             return self.cuda_graph_runner.replay(forward_batch)
 
+        stream = torch.cuda.current_stream()
+        print("model_runner 1")
         forward_batch.positions = (forward_batch.seq_lens - 1).to(torch.int64)
+        stream.synchronize()
+        print("model_runner 2")
         self.attn_backend.init_forward_metadata(forward_batch)
+        stream.synchronize()
+        print("model_runner 3")
         return self.model.forward(
             forward_batch.input_ids, forward_batch.positions, forward_batch
         )
@@ -778,6 +784,7 @@ class ModelRunner:
 
     def forward(self, forward_batch: ForwardBatch) -> LogitsProcessorOutput:
         if forward_batch.forward_mode.is_decode():
+            print("model_runner forward 1")
             return self.forward_decode(forward_batch)
         elif forward_batch.forward_mode.is_extend():
             return self.forward_extend(forward_batch)

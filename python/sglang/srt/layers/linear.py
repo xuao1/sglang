@@ -164,7 +164,7 @@ class UnquantizedLinearMethod(LinearMethodBase):
         x: torch.Tensor,
         bias: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-
+        print("unquantized_linear_method 1")
         return F.linear(x, layer.weight, bias)
 
 
@@ -374,17 +374,29 @@ class ColumnParallelLinear(LinearBase):
         param.load_column_parallel_weight(loaded_weight=loaded_weight)
 
     def forward(self, input_):
+        stream = torch.cuda.current_stream()
+        print("column_parallel_linear 1")
+        stream.synchronize()
+        print("column_parallel_linear 2")
         bias = self.bias if not self.skip_bias_add else None
-
+        print("column_parallel_linear 3")
         # Matrix multiply.
         assert self.quant_method is not None
+        print("column_parallel_linear 4, self.quant_method is: ", self.quant_method)
         output_parallel = self.quant_method.apply(self, input_, bias)
+        print("column_parallel_linear 5")
+        stream.synchronize()
+        print("column_parallel_linear 6")
         if self.gather_output:
             # All-gather across the partitions.
+            print("column_parallel_linear 7")
             output = tensor_model_parallel_all_gather(output_parallel)
+            print("column_parallel_linear 8")
         else:
             output = output_parallel
+            print("column_parallel_linear 9")
         output_bias = self.bias if self.skip_bias_add else None
+        print("column_parallel_linear 10")
         return output, output_bias
 
     def extra_repr(self) -> str:

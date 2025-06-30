@@ -151,11 +151,23 @@ class Qwen2Attention(nn.Module):
         hidden_states: torch.Tensor,
         forward_batch: ForwardBatch,
     ) -> torch.Tensor:
+        stream = torch.cuda.current_stream()
+        print("Qwen2Attention 1")
         qkv, _ = self.qkv_proj(hidden_states)
+        stream.synchronize()
+        print("Qwen2Attention 2")
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
+        stream.synchronize()
+        print("Qwen2Attention 3")
         q, k = self.rotary_emb(positions, q, k)
+        stream.synchronize()
+        print("Qwen2Attention 4")
         attn_output = self.attn(q, k, v, forward_batch)
+        stream.synchronize()
+        print("Qwen2Attention 5")
         output, _ = self.o_proj(attn_output)
+        stream.synchronize()
+        print("Qwen2Attention 6")
         return output
 
 
@@ -200,20 +212,41 @@ class Qwen2DecoderLayer(nn.Module):
         residual: Optional[torch.Tensor],
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Self Attention
+        stream = torch.cuda.current_stream()
+        print("Qwen2DecoderLayer 1")
+        stream.synchronize()
+        print("Qwen2DecoderLayer 2")
         if residual is None:
+            print("Qwen2DecoderLayer 3")
             residual = hidden_states
             hidden_states = self.input_layernorm(hidden_states)
+            stream.synchronize()
+            print("Qwen2DecoderLayer 4")
         else:
+            print("Qwen2DecoderLayer 5")
             hidden_states, residual = self.input_layernorm(hidden_states, residual)
+            stream.synchronize()
+            print("Qwen2DecoderLayer 6")
+        print("Qwen2DecoderLayer 7")
+        stream.synchronize()
+        print("Qwen2DecoderLayer 8")
         hidden_states = self.self_attn(
             positions=positions,
             hidden_states=hidden_states,
             forward_batch=forward_batch,
         )
+        print("Qwen2DecoderLayer 9")
+        stream.synchronize()
+        print("Qwen2DecoderLayer 10")
 
         # Fully Connected
         hidden_states, residual = self.post_attention_layernorm(hidden_states, residual)
+        stream.synchronize()
+        print("Qwen2DecoderLayer 11")
         hidden_states = self.mlp(hidden_states)
+        print("Qwen2DecoderLayer 12")
+        stream.synchronize()
+        print("Qwen2DecoderLayer 13")
         return hidden_states, residual
 
 
@@ -249,12 +282,20 @@ class Qwen2Model(nn.Module):
         forward_batch: ForwardBatch,
         input_embeds: torch.Tensor = None,
     ) -> torch.Tensor:
+        stream = torch.cuda.current_stream()
+        print("Qwen2Model 1")
+        stream.synchronize()
         if input_embeds is None:
             hidden_states = self.embed_tokens(input_ids)
         else:
             hidden_states = input_embeds
+        print("Qwen2Model 2")
         residual = None
+        stream.synchronize()
+        print("Qwen2Model 3")
         for i in range(len(self.layers)):
+            stream.synchronize()
+            print("Qwen2Model 4 i = ", i)
             layer = self.layers[i]
             hidden_states, residual = layer(
                 positions,
@@ -262,7 +303,11 @@ class Qwen2Model(nn.Module):
                 forward_batch,
                 residual,
             )
+        stream.synchronize()
+        print("Qwen2Model 5")
         hidden_states, _ = self.norm(hidden_states, residual)
+        stream.synchronize()
+        print("Qwen2Model 6")
         return hidden_states
 
 
@@ -315,11 +360,17 @@ class Qwen2ForCausalLM(nn.Module):
         get_embedding: bool = False,
     ) -> torch.Tensor:
         hidden_states = self.model(input_ids, positions, forward_batch, input_embeds)
+        print("Qwen2ForCausalLM 1")
+        stream = torch.cuda.current_stream()
+        stream.synchronize()
+        print("Qwen2ForCausalLM 2")
         if not get_embedding:
+            print("Qwen2ForCausalLM 3")
             return self.logits_processor(
                 input_ids, hidden_states, self.lm_head, forward_batch
             )
         else:
+            print("Qwen2ForCausalLM 4")
             return self.pooler(hidden_states, forward_batch)
 
     def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
