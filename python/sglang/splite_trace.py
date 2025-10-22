@@ -1,5 +1,5 @@
-input_file = 'filtered_output.csv'
-output_file = 'filtered_output2.csv'
+input_file = 'AzureLLMInferenceTrace_conv.csv'
+output_file = 'AzureLLMInferenceTrace_conv_half.csv'
 
 with open(input_file, 'r') as infile, open(output_file, 'w') as outfile:
     # 读取并保留表头

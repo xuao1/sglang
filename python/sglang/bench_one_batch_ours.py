@@ -553,8 +553,8 @@ stream_values = [
     # (128, 8),
     # (116, 24),
     # (100, 40),
-    # (84, 56),
-    # (72, 68),
+    # (80, 60),
+    # (64, 76),
     (56, 84)
     # (44, 96)
 ]
@@ -586,7 +586,7 @@ def latency_test_run_once(
     model_runner.current_stream_idx = 0
     formal_stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
 
-    df = pd.read_csv("/workspace/sglang/python/sglang/filtered_output.csv")
+    df = pd.read_csv("/workspace/sglang/python/sglang/AzureLLMInferenceTrace_conv_half.csv")
 
     # 转换时间戳列到datetime对象
     df["TIMESTAMP"] = pd.to_datetime(df["TIMESTAMP"])
@@ -598,7 +598,12 @@ def latency_test_run_once(
     # 生成所有请求和对应的时间
     # print("model_runner.model_config.context_len = ", model_runner.model_config.context_len)
 
+    # 指定目标请求率（requests per second）
+    REQUEST_RATE = 3.75
+    interval_ms = 1000 / REQUEST_RATE  # 请求间隔（毫秒）
+
     all_reqs = []
+    current_time_ms = 0.0  # 起始时间设为0毫秒
     for _, row in df.iterrows():
         # if row["ContextTokens"] + row["GeneratedTokens"] > model_runner.model_config.context_len + 4:
         if row["ContextTokens"] + row["GeneratedTokens"] > 8192 + 4:
@@ -614,6 +619,7 @@ def latency_test_run_once(
             "req": req,
             "arrival_time": row["rel_time_ms"]
         } for req in req_group])
+        current_time_ms += interval_ms
 
     # 按到达时间排序
     all_reqs.sort(key=lambda x: x["arrival_time"])
@@ -751,6 +757,7 @@ def latency_test_run_once(
     all_reqs_len = len(all_reqs)
     batch = None
     last_current_stream_idx = 0
+    pre_latency = 0
 
     with torch.cuda.stream(stream_a):
         # for i in range(output_len - 1):
@@ -817,20 +824,20 @@ def latency_test_run_once(
                 bs = batch.batch_size() if batch else 0
                 seq_len = batch.seq_lens_sum/bs if batch else 0
                 stream_a_value, stream_b_value = stream_values[model_runner.current_stream_idx]
-                predicted_latency = calculate_window_latency_step2(
-                    stream_a_value,
-                    bs,
-                    0,
-                    seq_len,
-                    stream_b_value
-                )
+                # predicted_latency = calculate_window_latency_step2(
+                #     stream_a_value,
+                #     bs,
+                #     0,
+                #     seq_len,
+                #     stream_b_value
+                # )
                 # print("predicted_latency = ", predicted_latency)
-                if predicted_latency > 45:
+                if pre_latency > 39:
                     # print("predicted_latency > 40, current_stream_idx = ", model_runner.current_stream_idx)
                     model_runner.current_stream_idx = max(0, model_runner.current_stream_idx - 1)
                     stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
                     LlamaModel.compute_stream = stream_b
-                elif predicted_latency < 35:
+                elif pre_latency < 36:
                     # print("predicted_latency < 30, current_stream_idx = ", self.tp_worker.model_runner.current_stream_idx)
                     model_runner.current_stream_idx = min(0, model_runner.current_stream_idx + 1)
                     stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
@@ -870,6 +877,7 @@ def latency_test_run_once(
             tot_latency += latency
             current_time += latency
             throughput = batch_size / latency
+            pre_latency = latency
 
             decode_latencies.append(latency)
             # print(f"Decode current_time:{current_time}, batch_size: {batch.batch_size()}, latency: {latency:6.5f} ms, predicted_latency: {predicted_latency:6.5f} ms, model_runner.current_stream_idx: {model_runner.current_stream_idx}")

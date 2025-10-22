@@ -600,7 +600,12 @@ def latency_test_run_once(
     # 生成所有请求和对应的时间
     # print("model_runner.model_config.context_len = ", model_runner.model_config.context_len)
 
+    # 指定目标请求率（requests per second）
+    REQUEST_RATE = 5  # 示例值，可修改
+    interval_ms = 1000 / REQUEST_RATE  # 请求间隔（毫秒）
+
     all_reqs = []
+    current_time_ms = 0.0  # 起始时间设为0毫秒
     for _, row in df.iterrows():
         # if row["ContextTokens"] + row["GeneratedTokens"] > model_runner.model_config.context_len + 4:
         if row["ContextTokens"] + row["GeneratedTokens"] > 8192 + 4:
@@ -614,8 +619,9 @@ def latency_test_run_once(
         )
         all_reqs.extend([{
             "req": req,
-            "arrival_time": row["rel_time_ms"]
+            "arrival_time": current_time_ms
         } for req in req_group])
+        current_time_ms += interval_ms
 
     # 按到达时间排序
     all_reqs.sort(key=lambda x: x["arrival_time"])
@@ -746,8 +752,8 @@ def latency_test_run_once(
     # Decode
     decode_latencies = []
 
-    # stream_a = native_stream
-    stream_a = formal_stream_a
+    stream_a = native_stream
+    # stream_a = formal_stream_a
     current_time = 0.0  # 当前模拟时间（毫秒）
     req_ptr = 0         # 指向下一个要处理的请求
     all_reqs_len = len(all_reqs)

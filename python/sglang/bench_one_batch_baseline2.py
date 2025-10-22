@@ -550,12 +550,12 @@ def print_dataclass(obj, indent=0):
 stream_pairs = []
 stream_as = []
 stream_values = [
-    (128, 8),
+    # (128, 8),
     # (116, 24),
-    (100, 40),
+    # (100, 40),
     # (84, 56),
-    (72, 68),
-    (56, 84),
+    # (72, 68),
+    # (56, 84)
     (44, 96)
 ]
 # for a, b in stream_values:
@@ -567,8 +567,6 @@ native_stream = torch.cuda.Stream(device='cuda:0')
 stream_a, stream_b = native_stream, None
 stream_as.append(stream_a)
 stream_pairs.append((stream_a, stream_b))
-
-# formal_stream_a = native_stream
 
 def latency_test_run_once(
     run_name, model_runner: ModelRunner, rank_print, reqs, batch_size, input_len, output_len, device
@@ -590,7 +588,7 @@ def latency_test_run_once(
     model_runner.current_stream_idx = 0
     formal_stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
 
-    df = pd.read_csv("/workspace/sglang/python/sglang/filtered_output.csv")
+    df = pd.read_csv("/workspace/sglang/python/sglang/AzureLLMInferenceTrace_conv_half.csv")
 
     # 转换时间戳列到datetime对象
     df["TIMESTAMP"] = pd.to_datetime(df["TIMESTAMP"])
@@ -600,9 +598,17 @@ def latency_test_run_once(
     df["rel_time_ms"] = (df["TIMESTAMP"] - base_time).dt.total_seconds() * 1000  # 转换为毫秒
 
     # 生成所有请求和对应的时间
+    # print("model_runner.model_config.context_len = ", model_runner.model_config.context_len)
+
+    # 指定目标请求率（requests per second）
+    REQUEST_RATE = 5  # 示例值，可修改
+    interval_ms = 1000 / REQUEST_RATE  # 请求间隔（毫秒）
+
     all_reqs = []
+    current_time_ms = 0.0  # 起始时间设为0毫秒
     for _, row in df.iterrows():
-        if row["ContextTokens"] + row["GeneratedTokens"] > model_runner.model_config.context_len + 4:
+        # if row["ContextTokens"] + row["GeneratedTokens"] > model_runner.model_config.context_len + 4:
+        if row["ContextTokens"] + row["GeneratedTokens"] > 8192 + 4:
             print("ContextTokens + GeneratedTokens > context_len + 4, ContextTokens + GeneratedTokens = ", row["ContextTokens"] + row["GeneratedTokens"], " context_len = ", model_runner.model_config.context_len)
             continue
         # 每个请求的batch_size=1
@@ -613,8 +619,9 @@ def latency_test_run_once(
         )
         all_reqs.extend([{
             "req": req,
-            "arrival_time": row["rel_time_ms"]
+            "arrival_time": current_time_ms
         } for req in req_group])
+        current_time_ms += interval_ms
 
     # 按到达时间排序
     all_reqs.sort(key=lambda x: x["arrival_time"])
@@ -745,8 +752,8 @@ def latency_test_run_once(
     # Decode
     decode_latencies = []
 
-    # stream_a = native_stream
-    stream_a = formal_stream_a
+    stream_a = native_stream
+    # stream_a = formal_stream_a
     current_time = 0.0  # 当前模拟时间（毫秒）
     req_ptr = 0         # 指向下一个要处理的请求
     all_reqs_len = len(all_reqs)
@@ -833,7 +840,7 @@ def latency_test_run_once(
                     LlamaModel.compute_stream = stream_b
                 elif predicted_latency < 35:
                     # print("predicted_latency < 30, current_stream_idx = ", self.tp_worker.model_runner.current_stream_idx)
-                    model_runner.current_stream_idx = min(4, model_runner.current_stream_idx + 1)
+                    model_runner.current_stream_idx = min(0, model_runner.current_stream_idx + 1)
                     stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
                     LlamaModel.compute_stream = stream_b
             
@@ -873,6 +880,7 @@ def latency_test_run_once(
             throughput = batch_size / latency
 
             decode_latencies.append(latency)
+            # print(f"Decode current_time:{current_time}, batch_size: {batch.batch_size()}, latency: {latency:6.5f} ms, predicted_latency: {predicted_latency:6.5f} ms, model_runner.current_stream_idx: {model_runner.current_stream_idx}")
             print(f"Decode current_time:{current_time}, batch_size: {batch.batch_size()}, latency: {latency:6.5f} ms")
             # if i > 0 and i % 8 == 0:
             #     avg_latency = sum(decode_latencies[-8:]) / 8
