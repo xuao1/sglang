@@ -1,5 +1,5 @@
 ### model
-model_name_or_path: /model/Meta-Llama-3-8B-Instruct/
+model_name_or_path: /root/autodl-tmp/model/Qwen2.5-14B-Instruct/
 trust_remote_code: true
 
 ### method
@@ -10,7 +10,7 @@ lora_target: all
 
 ### dataset
 dataset: identity,alpaca_en_demo
-template: llama3
+template: llama2
 
 cutoff_len: 1024
 

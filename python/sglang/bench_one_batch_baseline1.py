@@ -588,7 +588,7 @@ def latency_test_run_once(
     model_runner.current_stream_idx = 0
     formal_stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
 
-    df = pd.read_csv("/workspace/sglang/python/sglang/AzureLLMInferenceTrace_conv.csv")
+    df = pd.read_csv("/root/sglang/python/sglang/AzureLLMInferenceTrace_conv.csv")
 
     # 转换时间戳列到datetime对象
     df["TIMESTAMP"] = pd.to_datetime(df["TIMESTAMP"])
@@ -608,7 +608,7 @@ def latency_test_run_once(
     current_time_ms = 0.0  # 起始时间设为0毫秒
     for _, row in df.iterrows():
         # if row["ContextTokens"] + row["GeneratedTokens"] > model_runner.model_config.context_len + 4:
-        if row["ContextTokens"] + row["GeneratedTokens"] > 8192 + 4:
+        if row["ContextTokens"] + row["GeneratedTokens"] > model_runner.model_config.context_len + 4:
             print("ContextTokens + GeneratedTokens > context_len + 4, ContextTokens + GeneratedTokens = ", row["ContextTokens"] + row["GeneratedTokens"], " context_len = ", model_runner.model_config.context_len)
             continue
         # 每个请求的batch_size=1

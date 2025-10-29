@@ -291,7 +291,7 @@ class ModelRunner:
         logger.info(
             f"Load finetune model begin. avail mem={get_available_gpu_memory(self.device, self.gpu_id):.2f} GB"
         )
-        config_path = "/workspace/sglang/test/llama_factory/llama3_lora_sft.yaml"
+        config_path = "/root/sglang/test/llama_factory/llama3_lora_sft.yaml"
         with open(config_path, "r", encoding="utf-8") as f:
             finetune_config = yaml.safe_load(f)
         model_args, data_args, self.training_args, finetuning_args, generating_args = llamafactory.hparams.get_train_args(args=finetune_config)
