@@ -182,7 +182,6 @@ tmp*.txt
 
 # personnal
 work_dirs/
-*.csv
 
 !logo.png
 

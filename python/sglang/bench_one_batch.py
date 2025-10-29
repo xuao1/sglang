@@ -555,7 +555,11 @@ stream_values = [
     # (100, 40),
     # (80, 60),
     # (64, 76),
-    (48, 30)
+    (48, 30),
+    # (44, 34),
+    (40, 38),
+    # (36, 42),
+    (32, 46),
     # (44, 96)
 ]
 for a, b in stream_values:
@@ -583,7 +587,7 @@ def latency_test_run_once(
     finetune_thread = None
     LlamaModel = None
 
-    model_runner.current_stream_idx = 0
+    model_runner.current_stream_idx = 2
     formal_stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
 
     df = pd.read_csv("/root/sglang/python/sglang/AzureLLMInferenceTrace_conv_half.csv")
@@ -833,14 +837,14 @@ def latency_test_run_once(
                 #     stream_b_value
                 # )
                 # print("predicted_latency = ", predicted_latency)
-                if pre_latency > 39:
+                if pre_latency > 49:
                     # print("predicted_latency > 40, current_stream_idx = ", model_runner.current_stream_idx)
                     model_runner.current_stream_idx = max(0, model_runner.current_stream_idx - 1)
                     stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
                     LlamaModel.compute_stream = stream_b
-                elif pre_latency < 36:
+                elif pre_latency < 46:
                     # print("predicted_latency < 30, current_stream_idx = ", self.tp_worker.model_runner.current_stream_idx)
-                    model_runner.current_stream_idx = min(0, model_runner.current_stream_idx + 1)
+                    model_runner.current_stream_idx = min(2, model_runner.current_stream_idx + 1)
                     stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
                     LlamaModel.compute_stream = stream_b
             
@@ -882,7 +886,7 @@ def latency_test_run_once(
 
             decode_latencies.append(latency)
             # print(f"Decode current_time:{current_time}, batch_size: {batch.batch_size()}, latency: {latency:6.5f} ms, predicted_latency: {predicted_latency:6.5f} ms, model_runner.current_stream_idx: {model_runner.current_stream_idx}")
-            print(f"Decode current_time:{current_time}, batch_size: {batch.batch_size()}, latency: {latency:6.5f} ms")
+            print(f"Decode current_time:{current_time}, batch_size: {batch.batch_size()}, latency: {latency:6.5f} ms, model_runner.current_stream_idx: {model_runner.current_stream_idx}")
             # if i > 0 and i % 8 == 0:
             #     avg_latency = sum(decode_latencies[-8:]) / 8
             #     print(
