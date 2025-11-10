@@ -21,6 +21,7 @@ import resource
 import sys
 import time
 import traceback
+import pandas as pd
 import warnings
 from argparse import ArgumentParser
 from dataclasses import dataclass, field
@@ -38,6 +39,8 @@ from transformers import (
     PreTrainedTokenizerBase,
     PreTrainedTokenizerFast,
 )
+
+import csv
 
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 
@@ -444,8 +447,77 @@ def get_tokenizer(
         pretrained_model_name_or_path, trust_remote_code=True
     )
 
+def sample_azure_requests(num_requests: int, data_path: str, tokenizer) -> List[Tuple[str, int, int]]:
+    sample_results: List[Tuple[str, int, int]] = []
+    trace = []
+    trace_start_time = 0.0
+    with open(data_path) as f:
+        reader = csv.reader(f)
+        _ = next(reader)
+        for _ in range(num_requests):
+            row = next(reader)
+            input_len = int(row[1])
+            # input_len *= 8
+            output_len = int(row[2])
+            # generate a dummy prompt with the specified input length
+            # prompt = tokenizer.decode([0] * input_len)
+            sample_results.append((str(input_len), input_len, output_len))
+
+    df = pd.read_csv(data_path)
+    df["TIMESTAMP"] = pd.to_datetime(df["TIMESTAMP"])
+
+    base_time = df["TIMESTAMP"].iloc[0]
+    df["rel_time_ms"] = (df["TIMESTAMP"] - base_time).dt.total_seconds() * 1000 * 3.4
+
+    for _, row in df.iterrows():
+        trace.append(row["rel_time_ms"])
+    trace_start_time = trace[0]
+
+    print(f"sample_results: {sample_results[:5]}, trace: {trace[:5]}, trace_start_time: {trace_start_time}")
+
+    return sample_results, trace, trace_start_time
+
+def sample_BurstGPT_requests(num_requests: int, data_path: str, tokenizer) -> List[Tuple[str, int, int]]:
+    sample_results: List[Tuple[str, int, int]] = []
+    trace = []
+    trace_start_time = 0.0
+    with open(data_path) as f:
+        reader = csv.reader(f)
+        _ = next(reader)
+        for _ in range(num_requests):
+            row = next(reader)
+            input_len = int(row[1])
+            # input_len *= 8
+            output_len = int(row[2])
+            # generate a dummy prompt with the specified input length
+            # prompt = tokenizer.decode([0] * input_len)
+            sample_results.append((str(input_len), input_len, output_len))
+            trace.append(float(row[0]) * 1000 * 2.45)
+
+    trace_start_time = trace[0]
+
+    print(f"sample_results: {sample_results[:5]}, trace: {trace[:5]}, trace_start_time: {trace_start_time}")
+
+    return sample_results, trace, trace_start_time
+
+async def get_request_from_trace(
+    reqs: List[Tuple[str, int, int]],
+    traces: list[float],
+    trace_start_time: float
+) -> AsyncGenerator[Tuple[str, int, int], None]:
+    assert len(reqs) == len(traces)
+    num_requests = len(reqs)
+    start_timestamp = time.time()
+    for idx in range(num_requests):
+        target = start_timestamp + traces[idx] - trace_start_time * args.trace_rate_scale
+        time_to_sleep = target - time.time()
+        if time_to_sleep > 0:
+            await asyncio.sleep(time_to_sleep)
+        yield reqs[idx]
 
 def get_dataset(args, tokenizer):
+    trace = None
+    trace_start_time = 0.0
     if args.dataset_name == "sharegpt":
         input_requests = sample_sharegpt_requests(
             dataset_path=args.dataset_path,
@@ -471,9 +543,21 @@ def get_dataset(args, tokenizer):
             output_len=args.gen_output_len,
             tokenizer=tokenizer,
         )
+    elif args.dataset_name == "azure":
+        input_requests, trace, trace_start_time = sample_azure_requests(
+            num_requests=args.num_prompts,
+            data_path="/workspace/original-sglang/python/sglang/AzureLLMInferenceTrace_code.csv",
+            tokenizer=tokenizer,
+        )
+    elif args.dataset_name == "BurstGPT":
+        input_requests, trace, trace_start_time = sample_BurstGPT_requests(
+            num_requests=args.num_prompts,
+            data_path="/workspace/original-sglang/python/sglang/processed_simple3.csv",
+            tokenizer=tokenizer,
+        )
     else:
         raise ValueError(f"Unknown dataset: {args.dataset_name}")
-    return input_requests
+    return input_requests, trace, trace_start_time
 
 
 ASYNC_REQUEST_FUNCS = {
@@ -789,19 +873,20 @@ def sample_generated_shared_prefix_requests(
 async def get_request(
     input_requests: List[Tuple[str, int, int]],
     request_rate: float,
+    trace: Optional[list[float]] = None,
+    trace_start_time: float = 0.0,
 ) -> AsyncGenerator[Tuple[str, int, int], None]:
     input_requests = iter(input_requests)
-    for request in input_requests:
-        yield request
-
-        if request_rate == float("inf"):
-            # If the request rate is infinity, then we don't need to wait.
-            continue
-
+    for request_idx, request in enumerate(input_requests):
         # Sample the request interval from the exponential distribution.
-        interval = np.random.exponential(1.0 / request_rate)
+        # interval = np.random.exponential(1.0 / request_rate)
+        interval = trace[request_idx] - trace_start_time
+        print(f"Request {request_idx}: interval={interval} ms")
+        trace_start_time = trace[request_idx]
         # The next request will be sent after the interval.
-        await asyncio.sleep(interval)
+        await asyncio.sleep(interval/1000.0)
+
+        yield request
 
 
 def calculate_metrics(
@@ -891,6 +976,8 @@ async def benchmark(
     lora_name: str,
     extra_request_body: Dict[str, Any],
     profile: bool,
+    trace: Optional[list[float]],
+    trace_start_time: float = 0.0,
 ):
     if backend in ASYNC_REQUEST_FUNCS:
         request_func = ASYNC_REQUEST_FUNCS[backend]
@@ -940,7 +1027,7 @@ async def benchmark(
 
     benchmark_start_time = time.perf_counter()
     tasks: List[asyncio.Task] = []
-    async for request in get_request(input_requests, request_rate):
+    async for request in get_request(input_requests, request_rate, trace=trace, trace_start_time=trace_start_time):
         prompt, prompt_len, output_len = request
         request_func_input = RequestFuncInput(
             model=model_id,
@@ -1240,7 +1327,7 @@ def run_benchmark(args_: argparse.Namespace):
 
     tokenizer = get_tokenizer(tokenizer_id)
 
-    input_requests = get_dataset(args, tokenizer)
+    input_requests, trace, trace_start_time = get_dataset(args, tokenizer)
 
     if not args.multi:
         return asyncio.run(
@@ -1257,6 +1344,8 @@ def run_benchmark(args_: argparse.Namespace):
                 lora_name=args.lora_name,
                 extra_request_body=extra_request_body,
                 profile=args.profile,
+                trace=trace, 
+                trace_start_time=trace_start_time
             )
         )
     else:
@@ -1320,7 +1409,7 @@ if __name__ == "__main__":
         "--dataset-name",
         type=str,
         default="sharegpt",
-        choices=["sharegpt", "random", "generated-shared-prefix"],
+        choices=["sharegpt", "random", "generated-shared-prefix", "azure", "BurstGPT"],
         help="Name of the dataset to benchmark on.",
     )
     parser.add_argument(

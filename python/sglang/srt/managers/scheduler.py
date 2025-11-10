@@ -357,6 +357,10 @@ class Scheduler:
                 },
             )
 
+        self.decode_time = 0.0
+        self.prefill_time = 0.0
+        self.other_time = 0.0
+
     def watchdog_thread(self):
         """A watch dog thread that will try to kill the server itself if one batch takes too long."""
         self.watchdog_last_forward_ct = 0
@@ -389,7 +393,20 @@ class Scheduler:
             self.cur_batch = batch
 
             if batch:
+                
+                # if batch.forward_mode.is_decode():
+                start_time = time.time()
                 result = self.run_batch(batch)
+                torch.cuda.synchronize()
+                end_time = time.time()
+                if batch.forward_mode.is_decode():
+                    self.decode_time += end_time - start_time
+                elif batch.forward_mode.is_extend() or batch.forward_mode.is_mixed() or batch.forward_mode.is_prefill():
+                    self.prefill_time += end_time - start_time
+                else:
+                    self.other_time += end_time - start_time
+                print("decode time ratio is {:.6}%", self.decode_time / (self.decode_time + self.prefill_time + self.other_time) * 100)
+                print("self.prefill_time is: ", self.prefill_time)
                 self.process_batch_result(batch, result)
             else:
                 # Self-check and re-init some states when the server is idle

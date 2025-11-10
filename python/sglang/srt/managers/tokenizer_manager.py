@@ -211,19 +211,27 @@ class TokenizerManager:
         # Tokenize
         input_embeds = None
         input_text = obj.text
-        if obj.input_embeds is not None:
-            if not self.server_args.disable_radix_cache:
-                raise ValueError(
-                    "input_embeds is provided while disable_radix_cache is False. "
-                    "Please add `--disable-radix-cach` when you launch the server "
-                    "if you want to use input_embeds as inputs."
-                )
-            input_embeds = obj.input_embeds
-            input_ids = obj.input_ids
-        elif obj.input_ids is None:
-            input_ids = self.tokenizer.encode(input_text)
-        else:
-            input_ids = obj.input_ids
+        # if obj.input_embeds is not None:
+        #     if not self.server_args.disable_radix_cache:
+        #         raise ValueError(
+        #             "input_embeds is provided while disable_radix_cache is False. "
+        #             "Please add `--disable-radix-cach` when you launch the server "
+        #             "if you want to use input_embeds as inputs."
+        #         )
+        #     input_embeds = obj.input_embeds
+        #     input_ids = obj.input_ids
+        # elif obj.input_ids is None:
+        #     input_ids = self.tokenizer.encode(input_text)
+        # else:
+        #     input_ids = obj.input_ids
+        # obj.text may contain a number (length) for some internal callers.
+        # If it's not a valid int (or is None), default to 1 to avoid crashes.
+        try:
+            input_length = int(obj.text)
+        except (TypeError, ValueError): 
+            input_length = 1
+
+        input_ids = [0 for _ in range(input_length)]
 
         if self.is_generation:
             # TODO: also support getting embeddings for multimodal models
