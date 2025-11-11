@@ -554,13 +554,10 @@ stream_values = [
     # (116, 24),
     # (100, 40),
     # (80, 60),
-    # (64, 76),
-    (48, 30),
-    # (44, 34),
-    (40, 38),
-    # (36, 42),
-    (32, 46),
-    # (44, 96)
+    (64, 76),
+    (56, 84),
+    (48, 92),
+    # (36, 104)
 ]
 for a, b in stream_values:
     stream_a, stream_b = freeslots.create_greenctx_stream_by_value(a, b, 0)
@@ -590,14 +587,19 @@ def latency_test_run_once(
     model_runner.current_stream_idx = 2
     formal_stream_a, stream_b = stream_pairs[model_runner.current_stream_idx]
 
-    df = pd.read_csv("/root/sglang/python/sglang/AzureLLMInferenceTrace_conv_half.csv")
+    # df = pd.read_csv("/workspace/sglang/python/sglang/AzureLLMInferenceTrace_code_half.csv")
 
-    # 转换时间戳列到datetime对象
-    df["TIMESTAMP"] = pd.to_datetime(df["TIMESTAMP"])
+    # # 转换时间戳列到datetime对象
+    # df["TIMESTAMP"] = pd.to_datetime(df["TIMESTAMP"])
 
-    # 计算相对时间（以第一个请求的时间为基准）
+    # # 计算相对时间（以第一个请求的时间为基准）
+    # base_time = df["TIMESTAMP"].iloc[0]
+    # df["rel_time_ms"] = (df["TIMESTAMP"] - base_time).dt.total_seconds() * 1000 / 9.3200723
+
+    df = pd.read_csv("/workspace/sglang/python/sglang/processed_simple3_half.csv")
+
     base_time = df["TIMESTAMP"].iloc[0]
-    df["rel_time_ms"] = (df["TIMESTAMP"] - base_time).dt.total_seconds() * 1000  # 转换为毫秒
+    df["rel_time_ms"] = (df["TIMESTAMP"] - base_time) * 1000 / 8.139369159
 
     # 生成所有请求和对应的时间
     # print("model_runner.model_config.context_len = ", model_runner.model_config.context_len)
@@ -610,18 +612,19 @@ def latency_test_run_once(
     current_time_ms = 0.0  # 起始时间设为0毫秒
     for _, row in df.iterrows():
         # if row["ContextTokens"] + row["GeneratedTokens"] > model_runner.model_config.context_len + 4:
-        if row["ContextTokens"] + row["GeneratedTokens"] > model_runner.model_config.context_len + 4:
-            print("ContextTokens + GeneratedTokens > context_len + 4, ContextTokens + GeneratedTokens = ", row["ContextTokens"] + row["GeneratedTokens"], " context_len = ", model_runner.model_config.context_len)
+        if int(row["ContextTokens"]) + int(row["GeneratedTokens"]) > 8192 + 4:
+            print("ContextTokens + GeneratedTokens > context_len + 4, ContextTokens + GeneratedTokens = ", int(row["ContextTokens"]) + int(row["GeneratedTokens"]), " context_len = ", model_runner.model_config.context_len)
             continue
         # 每个请求的batch_size=1
         req_group = prepare_synthetic_inputs_for_latency_test(
             batch_size=1,
-            input_len=row["ContextTokens"],
-            output_len=row["GeneratedTokens"]
+            input_len=int(row["ContextTokens"]),
+            output_len=int(row["GeneratedTokens"])
         )
         all_reqs.extend([{
             "req": req,
-            "arrival_time": row["rel_time_ms"]
+            "arrival_time": row["rel_time_ms"],
+            # "arrival_time": current_time_ms
         } for req in req_group])
         current_time_ms += interval_ms
 
@@ -641,14 +644,14 @@ def latency_test_run_once(
     # # )
     # # input_thread.start()
 
-    # stream_b = native_stream
+    # # stream_b = native_stream
 
     # model_runner.finetune_model.base_model.model.model.compute_stream = stream_b
 
     # with torch.cuda.stream(stream_b):
     #     model_runner.finetune_train()
 
-    # time.sleep(10000)
+    # time.sleep(30)
     # # # =============================================================================================================
     # # # =============================================================================================================
 
@@ -770,6 +773,7 @@ def latency_test_run_once(
             # batch 的加入
             # if i % 1024 == 0:
             while req_ptr < all_reqs_len and current_time >= all_reqs[req_ptr]["arrival_time"]:
+                # LlamaModel.pause_train = True
                 # next_reqs = prepare_synthetic_inputs_for_latency_test(32, 128, 2048)
                 new_batch = ScheduleBatch.init_new(
                     reqs=[all_reqs[req_ptr]["req"]],
@@ -780,11 +784,28 @@ def latency_test_run_once(
                     enable_overlap=False,
                 )
                 new_batch.prepare_for_extend()
+                
+                # prefill_start_event = torch.cuda.Event(enable_timing=True)
+                # prefill_end_event = torch.cuda.Event(enable_timing=True)
+                # prefill_start_event.record(stream=native_stream)
+
+                # with torch.cuda.stream(native_stream):
+                #     model_worker_batch = new_batch.get_model_worker_batch()
+                #     forward_batch = ForwardBatch.init_new(model_worker_batch, model_runner)
+                #     logits_output = model_runner.forward(forward_batch)
+                #     next_token_ids = model_runner.sample(logits_output, forward_batch)
+                # prefill_end_event.record(stream=native_stream)
+                # prefill_end_event.synchronize()
+                # prefill_latency = prefill_start_event.elapsed_time(prefill_end_event)
+                # print(f"Prefill single req latency: {prefill_latency} ms")
+                # current_time += prefill_latency
+                
                 new_batch.output_ids = torch.zeros(
                     new_batch.batch_size(),
                     dtype=torch.int32,
                     device=device,
                 )
+                # return next_token_ids, logits_output.next_token_logits, batch
                 # if batch is None:
                 if batch is None or len(batch.reqs) == 0:
                     batch = new_batch
@@ -793,11 +814,12 @@ def latency_test_run_once(
 
                 req_ptr += 1
 
+            # LlamaModel.pause_train = False
             batch.filter_batch()
 
             if len(batch.reqs) == 0:
-                time.sleep(0.001)
-                current_time += 1   # 1ms
+                time.sleep(0.005)
+                current_time += 5   # 5ms
                 continue
 
             batch.prepare_for_decode()
